@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f2e7">
+  <title>鹈鹕的兜风日 · SVG 动画</title>
+  <style>
+    :root { color-scheme: light; --paper:#f6f2e7; --ink:#294b49; --muted:#586c63; --accent:#c65b3e; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font-family:"Microsoft YaHei","PingFang SC",sans-serif; }
+    main { width:min(1120px, 100%); margin:auto; padding:58px 42px 24px; }
+    header { display:flex; align-items:end; justify-content:space-between; gap:24px; margin-bottom:26px; }
+    h1 { margin:0; font-family:"Noto Serif SC","Songti SC",SimSun,serif; font-weight:500; font-size:clamp(30px,4vw,46px); letter-spacing:.03em; }
+    header p { color:var(--muted); margin:12px 0 0; font-size:14px; line-height:1.8; }
+    .stamp { display:flex; align-items:center; gap:9px; white-space:nowrap; color:var(--muted); font-size:12px; padding-bottom:4px; }
+    .stamp svg { width:23px; height:23px; }
+    .scene { overflow:hidden; border-radius:8px; background:#e7efe5; }
+    #landscape { display:block; width:100%; height:auto; aspect-ratio:1100/640; }
+    .controls { display:flex; align-items:center; justify-content:space-between; gap:18px; padding:22px 0; }
+    .actions { display:flex; align-items:center; gap:10px; }
+    button { display:inline-flex; align-items:center; justify-content:center; gap:9px; min-height:44px; border:1px solid #bec8ba; border-radius:24px; background:transparent; padding:0 18px; color:var(--ink); font:inherit; font-size:13px; cursor:pointer; transition:background .2s,border-color .2s; }
+    button:hover { background:#e4e9dc; border-color:#7c9484; }
+    button:focus-visible,input:focus-visible { outline:3px solid var(--accent); outline-offset:4px; }
+    button svg { width:16px; height:16px; }
+    #toggle { background:var(--ink); color:#fffdf3; border-color:var(--ink); min-width:115px; }
+    #toggle:hover { background:#3e625e; }
+    .speed { display:flex; align-items:center; gap:12px; font-size:12px; }
+    input { width:108px; accent-color:var(--ink); cursor:pointer; }
+    output { width:32px; font-variant-numeric:tabular-nums; }
+    footer { display:flex; justify-content:space-between; gap:16px; color:var(--muted); border-top:1px solid #d8ddcf; padding-top:18px; font-size:11px; letter-spacing:.07em; }
+    ::selection { background:#e9bb83; color:var(--ink); }
+    @media(max-width:600px) {
+      main { padding:30px 18px 22px; } header { margin-bottom:22px; } .stamp { display:none; }
+      .scene { margin:0 -6px; } #landscape { height:420px; aspect-ratio:auto; }
+      .controls { flex-wrap:wrap; gap:20px; } .speed { margin-left:auto; } input { width:90px; }
+      button { padding:0 14px; } footer { font-size:10px; letter-spacing:0; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><h1>鹈鹕的兜风日</h1><p>风刚刚好，今天就慢慢骑。</p></div>
+    <div class="stamp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="12" cy="12" r="4"/><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>海边 · 晴 · 适合兜风</div>
+  </header>
+  <div class="scene">
+    <svg id="landscape" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 640" preserveAspectRatio="xMidYMid slice" role="img" aria-labelledby="scene-title scene-desc">
+      <title id="scene-title">鹈鹕骑着绿色自行车在海边兜风</title>
+      <desc id="scene-desc">白色鹈鹕戴着绿色小帽和橙色围巾，脚蹬带动车轮转动，云朵、海浪与路边小草缓缓向后移动。下方可暂停动画或调整速度。</desc>
+      <defs>
+        <g id="cloud" fill="#fafaf0"><path d="M0 28C-4 15 8 5 21 10C25-8 53-6 58 12C77 5 91 18 86 28Z"/></g>
+        <g id="grass" fill="none" stroke="#668877" stroke-width="3" stroke-linecap="round"><path d="M0 0q-2-14-10-20M0 0q3-23 12-27M0 0q9-12 18-12"/></g>
+        <g id="spokes" fill="none" stroke="#8baca0" stroke-width="2"><path d="M-66 0H66M0-66V66M-46.7-46.7l93.4 93.4M-46.7 46.7l93.4-93.4M-61-25l122 50M-25-61l50 122M-61 25 61-25M-25 61 25-61"/></g>
+        <g id="wheel"><circle r="78" fill="#f0eddc" stroke="#294b49" stroke-width="11"/><circle r="68" fill="none" stroke="#fff8e6" stroke-width="4"/></g>
+        <g id="gull" fill="none" stroke="#76958a" stroke-width="2.5" stroke-linecap="round"><path d="M-16 2Q-7-6 0 2Q7-6 16 2"/></g>
+      </defs>
+      <!-- 远景分层移动，形成轻柔的视差。 -->
+      <path fill="#e7efe5" d="M0 0h1100v640H0z"/>
+      <circle cx="839" cy="124" r="53" fill="#edb96b"/>
+      <circle cx="839" cy="124" r="66" fill="none" stroke="#edb96b" opacity=".23"/>
+      <g id="clouds"><use href="#cloud" x="145" y="110"/><use href="#cloud" transform="translate(490 70) scale(.65)"/><use href="#cloud" transform="translate(990 175) scale(.85)"/></g>
+      <g id="gulls"><use href="#gull" x="692" y="173"/><use href="#gull" transform="translate(741 155) scale(.7)"/></g>
+      <path d="M0 304Q111 275 190 298T365 295Q454 260 564 294T771 289Q881 262 1100 292V392H0Z" fill="#c4d9c8"/>
+      <path d="M0 330Q252 313 490 330T1100 321V470H0Z" fill="#9fc8bb"/>
+      <g id="waves" fill="none" stroke="#d5e9d8" stroke-width="3" stroke-linecap="round"></g>
+      <path d="M0 414Q240 383 464 423T1100 404V640H0Z" fill="#e1d9b3"/>
+      <path d="M0 454Q220 440 444 458T1100 444V640H0Z" fill="#f2e6c7"/>
+      <path d="M0 566H1100" stroke="#d5c9a5" stroke-width="2"/>
+      <g id="road" fill="none" stroke="#d4c6a1" stroke-width="3" stroke-linecap="round"></g>
+      <g id="plants"></g>
+      <ellipse cx="536" cy="547" rx="209" ry="13" fill="#556b51" opacity=".13"/>
+      <!-- 所有骑行动作共享同一个时间轴，脚掌始终跟随曲柄。 -->
+      <g id="rider">
+        <g transform="translate(399 459)"><use href="#wheel"/><g id="rear-spokes"><use href="#spokes"/></g><circle r="9" fill="#426f60"/></g>
+        <g transform="translate(676 459)"><use href="#wheel"/><g id="front-spokes"><use href="#spokes"/></g><circle r="9" fill="#426f60"/></g>
+        <path d="M335 444A66 66 0 0 1 458 426M613 428A68 68 0 0 1 740 445" fill="none" stroke="#e9b467" stroke-width="6" stroke-linecap="round"/>
+        <path d="M450 332H416V389" fill="none" stroke="#547e6b" stroke-width="5" stroke-linejoin="round"/>
+        <path d="M398 329H454" stroke="#547e6b" stroke-width="5" stroke-linecap="round"/>
+        <path id="far-leg" d="" fill="none" stroke="#bc7b42" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+        <path id="far-foot" d="" fill="none" stroke="#bc7b42" stroke-width="10" stroke-linecap="round"/>
+        <g fill="none" stroke-linejoin="round" stroke-linecap="round">
+          <path d="M399 459 468 356 529 459ZM468 356H634L529 459M634 356l42 103" stroke="#315c51" stroke-width="10"/>
+          <path d="m407 453 61-90 58 91m-51-95h152l-96 94" stroke="#72957a" stroke-width="3"/>
+          <path d="m468 356-10-38m176 38-14-51 21-14" stroke="#315c51" stroke-width="8"/>
+          <path d="M630 296h26q16 0 16 12t-13 12" stroke="#294b49" stroke-width="7"/>
+          <path d="M665 318q-35 30-15 72" stroke="#879b83" stroke-width="2"/>
+        </g>
+        <path d="M438 313q-4-9 8-10l38 2q13 2 10 11l-48 3q-9 0-8-6" fill="#815c43"/>
+        <path d="M404 450h125a9 9 0 0 1 0 18H405a9 9 0 0 1-1-18Z" fill="#91a78b" stroke="#315c51" stroke-width="2"/>
+        <circle cx="529" cy="459" r="23" fill="#f3d9a3" stroke="#315c51" stroke-width="4"/>
+        <g id="crank" stroke="#294b49" stroke-width="5" stroke-linecap="round"><path d="M0-30V30"/></g>
+        <!-- 鹈鹕：长嘴、喉囊、弯颈和大翅膀构成清晰的轮廓。 -->
+        <g id="bird-body">
+          <path d="M442 307q-53 3-72-30l58 4-22-26q58-1 87 35" fill="#f9f5e7" stroke="#496255" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M541 197C506 196 493 230 474 244C457 244 427 239 419 268C403 302 440 338 485 337C528 338 549 314 548 277C547 252 567 236 571 216Z" fill="#fffbed" stroke="#496255" stroke-width="2.5"/>
+          <path d="M422 290q18 43 65 35q35-7 42-33q-29 29-60 18Z" fill="#e6e8d5"/>
+          <path d="M532 234q-25 27-21 55" fill="none" stroke="#e1e4d1" stroke-width="10" stroke-linecap="round"/>
+          <g id="scarf-tail"><path d="M535 222C508 225 492 211 472 218C449 226 432 214 422 211L430 229C455 245 475 229 493 237Q517 247 542 233Z" fill="#d66d49"/><path d="m434 225 10 2m4 1 9-1" fill="none" stroke="#f3ac76" stroke-width="3"/></g>
+          <path d="m538 215 29 6-8 19-30-8Z" fill="#c65b3e"/><path d="m543 220 17 4" stroke="#ef9a6d" stroke-width="3" stroke-linecap="round"/>
+          <g id="head">
+            <path d="M533 199C521 180 530 151 550 142C576 130 600 145 601 169L594 194C579 212 553 215 533 199Z" fill="#fffbed" stroke="#496255" stroke-width="2.5"/>
+            <path d="M587 179 730 187C711 208 674 235 637 235C607 233 592 212 587 179Z" fill="#e9b26b" stroke="#8d754d" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M592 176q68-8 151 14q-4 7-22 7l-130-8Z" fill="#f3c87c" stroke="#8d754d" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M607 201q14 24 42 23" fill="none" stroke="#d39a5c" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="578" cy="165" r="5" fill="#294b49"/><circle cx="579.5" cy="163.5" r="1.5" fill="#fffbed"/>
+            <path d="M572 152q6-4 12 0" fill="none" stroke="#496255" stroke-width="2" stroke-linecap="round"/>
+            <ellipse cx="568" cy="181" rx="8" ry="5" fill="#e8b397" opacity=".65"/>
+            <path d="M532 144q-1-28 25-30q27-2 34 26" fill="#517d62" stroke="#315c51" stroke-width="2.5"/>
+            <path d="M527 144q39-7 74-3q9 8-2 10l-70 2q-10-1-2-9" fill="#709171" stroke="#315c51" stroke-width="2.5"/>
+            <path d="M543 122q9-5 15-4" fill="none" stroke="#8aa181" stroke-width="3" stroke-linecap="round"/>
+          </g>
+          <path d="M484 257C503 255 526 274 555 283L634 293Q646 298 637 306L550 300C529 302 513 291 497 286" fill="#f3f2e0" stroke="#496255" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="m531 287 27 6m-36 0 27 6" fill="none" stroke="#b4bfaa" stroke-width="2" stroke-linecap="round"/>
+        </g>
+        <path id="near-leg" d="" fill="none" stroke="#e1a04f" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+        <path id="near-foot" d="" fill="none" stroke="#e1a04f" stroke-width="11" stroke-linecap="round"/>
+        <g fill="none" stroke="#294b49" stroke-width="5" stroke-linecap="round"><path id="near-pedal" d=""/><path id="far-pedal" d=""/></g>
+        <circle cx="529" cy="459" r="6" fill="#294b49"/>
+        <g id="bell-lines" fill="none" stroke="#c65b3e" stroke-width="3" stroke-linecap="round" opacity="0"><path d="m679 276 6-10m3 19 12-4m-32-10 1-11"/></g>
+        <path d="M638 291a8 8 0 0 1 16 0Z" fill="#e9b467" stroke="#496255" stroke-width="2"/>
+      </g>
+      <g fill="#fff7df"><path d="m151 496 3-6 3 6-3 6Z"/><path d="m939 529 3-6 3 6-3 6Z"/></g>
+    </svg>
+  </div>
+  <div class="controls">
+    <div class="actions">
+      <button id="toggle" type="button" aria-label="暂停动画"><svg id="play-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M4 3h3v10H4zm5 0h3v10H9z"/></svg><span id="play-label">歇一会儿</span></button>
+      <button id="bell" type="button" aria-label="按一下车铃"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 13h12M6 13V9a4 4 0 0 1 8 0v4M8 16h4M10 3v2m5 0 2-2"/></svg>叮铃</button>
+    </div>
+    <label class="speed" for="speed">骑行速度<input id="speed" type="range" min="0.5" max="2" step="0.25" value="1"><output id="speed-value" for="speed">1×</output></label>
+  </div>
+  <footer><span>沿着海岸线，去没有计划的地方。</span><span>纯 SVG 绘制 · 循环动画</span></footer>
+</main>
+<script>
+  // 页面不依赖外部资源，离线打开也能完整播放。
+  const $ = id => document.getElementById(id);
+  const ns = 'http://www.w3.org/2000/svg';
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  let playing = !reducedMotion.matches, speed = 1, elapsed = 0, previous = 0, bellTime = 0;
+  let audioContext;
+  function svgElement(tag, attrs, parent) {
+    const element = document.createElementNS(ns, tag);
+    Object.entries(attrs).forEach(([key, value]) => element.setAttribute(key, value));
+    parent.appendChild(element); return element;
+  }
+  const waves = Array.from({length:15}, (_, i) => {
+    const x = (i * 191) % 1250, y = 351 + (i % 4) * 16;
+    return {x, node:svgElement('path', {d:`M0 ${y}h${24 + i % 3 * 18}`, opacity:0.45 + (i % 3) * .15}, $('waves'))};
+  });
+  const marks = Array.from({length:12}, (_, i) => ({x:i * 113, node:svgElement('path', {d:`M0 ${579 + i % 3 * 18}h${15 + i % 4 * 8}`}, $('road'))}));
+  const plants = Array.from({length:7}, (_, i) => ({x:i * 210, y:i % 2 ? 613 : 446, node:svgElement('use', {href:'#grass'}, $('plants'))}));
+  function setPlayback() {
+    $('play-label').textContent = playing ? '歇一会儿' : '继续兜风';
+    $('toggle').setAttribute('aria-label', playing ? '暂停动画' : '播放动画');
+    $('play-icon').innerHTML = playing ? '<path d="M4 3h3v10H4zm5 0h3v10H9z"/>' : '<path d="m5 2 9 6-9 6Z"/>';
+  }
+  $('toggle').addEventListener('click', () => { playing = !playing; setPlayback(); });
+  reducedMotion.addEventListener('change', event => { playing = !event.matches; setPlayback(); });
+  $('speed').addEventListener('input', event => {
+    speed = Number(event.target.value); $('speed-value').value = speed + '×';
+  });
+  $('bell').addEventListener('click', () => {
+    bellTime = performance.now();
+    // 声音只在主动点击后产生，用短促泛音模拟自行车铃。
+    try {
+      audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
+      audioContext.resume();
+      [0, .16].forEach(delay => {
+        [1568, 3136].forEach((frequency, harmonic) => {
+          const oscillator = audioContext.createOscillator(), gain = audioContext.createGain();
+          const start = audioContext.currentTime + delay;
+          oscillator.frequency.value = frequency;
+          gain.gain.setValueAtTime(0, start);
+          gain.gain.linearRampToValueAtTime(harmonic ? .025 : .075, start + .006);
+          gain.gain.exponentialRampToValueAtTime(.001, start + .65);
+          oscillator.connect(gain); gain.connect(audioContext.destination);
+          oscillator.start(start); oscillator.stop(start + .7);
+        });
+      });
+    } catch (_) { /* 浏览器不支持音频时仍提供车铃视觉反馈。 */ }
+  });
+  const wrap = (x, distance, width) => ((x - distance) % width + width) % width - 100;
+  function draw(t, now) {
+    const phase = t * 3.8, angle = phase * 180 / Math.PI;
+    const bob = Math.sin(phase * 2) * 1.6;
+    $('rider').setAttribute('transform', `translate(0 ${bob})`);
+    $('rear-spokes').setAttribute('transform', `rotate(${angle * .62})`);
+    $('front-spokes').setAttribute('transform', `rotate(${angle * .62})`);
+    $('crank').setAttribute('transform', `translate(529 459) rotate(${angle - 90})`);
+    // 分开计算两侧腿部，膝盖弯曲，脚踏相差半个周期。
+    ['near', 'far'].forEach((side, index) => {
+      const a = phase + index * Math.PI, x = 529 + Math.cos(a) * 30, y = 459 + Math.sin(a) * 30;
+      const hipX = index ? 477 : 491, hipY = index ? 326 : 331;
+      const kneeX = 508 + Math.cos(a - .7) * 18, kneeY = 380 + Math.sin(a) * 12;
+      $(side + '-leg').setAttribute('d', `M${hipX} ${hipY}Q${kneeX - 5} ${kneeY - 9} ${kneeX} ${kneeY}L${x} ${y - 7}`);
+      $(side + '-foot').setAttribute('d', `M${x - 9} ${y - 5}Q${x + 1} ${y - 2} ${x + 16} ${y - 3}`);
+      $(side + '-pedal').setAttribute('d', `M${x - 13} ${y + 2}h30`);
+    });
+    $('scarf-tail').setAttribute('transform', `rotate(${Math.sin(t * 7) * 4} 538 224)`);
+    $('head').setAttribute('transform', `rotate(${Math.sin(phase) * .7} 550 210)`);
+    $('clouds').setAttribute('transform', `translate(${-t * 4 % 1200} 0)`);
+    // 云层在一个完整周期内无缝循环。
+    $('cloud-copy').setAttribute('transform', `translate(${1200 - t * 4 % 1200} 0)`);
+    $('gulls').setAttribute('transform', `translate(${Math.sin(t * .4) * 14} ${Math.sin(t * 1.4) * 4})`);
+    waves.forEach(item => item.node.setAttribute('transform', `translate(${wrap(item.x, t * 13, 1350)} 0)`));
+    marks.forEach(item => item.node.setAttribute('transform', `translate(${wrap(item.x, t * 184, 1356)} 0)`));
+    plants.forEach((item, i) => item.node.setAttribute('transform', `translate(${wrap(item.x, t * (i % 2 ? 190 : 120), 1470)} ${item.y}) scale(${i % 2 ? 1 : .65})`));
+    const ringing = bellTime && now - bellTime < 650;
+    $('bell-lines').setAttribute('opacity', ringing ? (1 - (now - bellTime) / 650) : 0);
+  }
+  const cloudCopy = $('clouds').cloneNode(true);
+  cloudCopy.id = 'cloud-copy'; $('clouds').after(cloudCopy);
+  function frame(now) {
+    const dt = previous ? Math.min((now - previous) / 1000, .05) : 0;
+    previous = now;
+    if (playing && !document.hidden) elapsed += dt * speed;
+    draw(elapsed, now); requestAnimationFrame(frame);
+  }
+  setPlayback(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>
