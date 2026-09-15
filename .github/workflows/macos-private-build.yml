@@ -37,7 +37,11 @@ jobs:
     env:
       UV_MANAGED_PYTHON: "true"
       WCE_MACOS_SIGNING_MODE: self-signed
+      # The artifact repository identifies the producer; the download repository
+      # identifies where the immutable asset is currently hosted.
       WCE_MACOS_XKEY_ARTIFACT_REPOSITORY: ${{ vars.WCE_MACOS_XKEY_ARTIFACT_REPOSITORY }}
+      WCE_MACOS_XKEY_ARTIFACT_DOWNLOAD_REPOSITORY: ${{ vars.WCE_MACOS_XKEY_ARTIFACT_DOWNLOAD_REPOSITORY }}
+      WCE_MACOS_XKEY_ARTIFACT_SHA256: ${{ vars.WCE_MACOS_XKEY_ARTIFACT_SHA256 }}
       WCE_MACOS_XKEY_ARTIFACT_RUN_ID: ${{ vars.WCE_MACOS_XKEY_ARTIFACT_RUN_ID }}
       WCE_MACOS_XKEY_SOURCE_REVISION: ${{ vars.WCE_MACOS_XKEY_SOURCE_REVISION }}
       WCE_MACOS_XKEY_BUILD_ID: ${{ vars.WCE_MACOS_XKEY_BUILD_ID }}
@@ -46,6 +50,8 @@ jobs:
       WCE_MACOS_WCDA_HOST_SIGNING_IDENTITY: ${{ vars.WCE_MACOS_WCDA_HOST_SIGNING_IDENTITY }}
       WCE_MACOS_XKEY_ALLOW_DEVELOPMENT_ARTIFACTS: "0"
       WCE_NATIVE_CORE_ARTIFACT_REPOSITORY: ${{ vars.WCE_NATIVE_CORE_ARTIFACT_REPOSITORY }}
+      WCE_NATIVE_CORE_ARTIFACT_DOWNLOAD_REPOSITORY: ${{ vars.WCE_NATIVE_CORE_ARTIFACT_DOWNLOAD_REPOSITORY }}
+      WCE_NATIVE_CORE_ARTIFACT_SHA256: ${{ vars.WCE_NATIVE_CORE_ARTIFACT_SHA256 }}
       WCE_NATIVE_CORE_ARTIFACT_RUN_ID: ${{ vars.WCE_NATIVE_CORE_ARTIFACT_RUN_ID }}
       WCE_NATIVE_CORE_SOURCE_REVISION: ${{ vars.WCE_NATIVE_CORE_SOURCE_REVISION }}
       WCE_NATIVE_CORE_BUILD_ID: ${{ vars.WCE_NATIVE_CORE_BUILD_ID }}
@@ -59,6 +65,7 @@ jobs:
       WCE_NATIVE_CORE_REQUIRED: "1"
       WCE_NATIVE_CORE_ALLOW_DEVELOPMENT_ARTIFACTS: "0"
       WCE_INTEGRITY_ARTIFACT_REPOSITORY: ${{ vars.WCE_INTEGRITY_ARTIFACT_REPOSITORY }}
+      WCE_INTEGRITY_ARTIFACT_DOWNLOAD_REPOSITORY: ${{ vars.WCE_INTEGRITY_ARTIFACT_DOWNLOAD_REPOSITORY }}
       WCE_INTEGRITY_ARTIFACT_RUN_ID: ${{ vars.WCE_INTEGRITY_ARTIFACT_RUN_ID }}
       WCE_INTEGRITY_ARTIFACT_SHA256: ${{ vars.WCE_INTEGRITY_ARTIFACT_SHA256 }}
       WCE_INTEGRITY_SOURCE_REVISION: ${{ vars.WCE_INTEGRITY_SOURCE_REVISION }}
@@ -118,6 +125,11 @@ jobs:
           printf 'PACKAGE_VERSION=%s\n' "$package_version" >> "$GITHUB_ENV"
 
           [[ "$WCE_MACOS_XKEY_ARTIFACT_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+          if [[ -n "${WCE_MACOS_XKEY_ARTIFACT_DOWNLOAD_REPOSITORY:-}" ]]; then
+            [[ "$WCE_MACOS_XKEY_ARTIFACT_DOWNLOAD_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+            [[ "${WCE_MACOS_XKEY_ARTIFACT_SHA256:-}" =~ ^[0-9a-f]{64}$ ]]
+            [[ ! "$WCE_MACOS_XKEY_ARTIFACT_SHA256" =~ ^0{64}$ ]]
+          fi
           [[ "$WCE_MACOS_XKEY_ARTIFACT_RUN_ID" =~ ^[1-9][0-9]*$ ]]
           [[ "$WCE_MACOS_XKEY_SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]]
           [[ "$WCE_MACOS_XKEY_BUILD_ID" =~ ^[A-Za-z0-9._-]{8,128}$ ]]
@@ -126,6 +138,11 @@ jobs:
           test -n "$WCE_MACOS_WCDA_HOST_SIGNING_IDENTITY"
           test "$CSC_NAME" = "$WCE_MACOS_WCDA_HOST_SIGNING_IDENTITY"
           [[ "$WCE_NATIVE_CORE_ARTIFACT_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+          if [[ -n "${WCE_NATIVE_CORE_ARTIFACT_DOWNLOAD_REPOSITORY:-}" ]]; then
+            [[ "$WCE_NATIVE_CORE_ARTIFACT_DOWNLOAD_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+            [[ "${WCE_NATIVE_CORE_ARTIFACT_SHA256:-}" =~ ^[0-9a-f]{64}$ ]]
+            [[ ! "$WCE_NATIVE_CORE_ARTIFACT_SHA256" =~ ^0{64}$ ]]
+          fi
           [[ "$WCE_NATIVE_CORE_ARTIFACT_RUN_ID" =~ ^[1-9][0-9]*$ ]]
           [[ "$WCE_NATIVE_CORE_SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]]
           [[ "$WCE_NATIVE_CORE_BUILD_ID" =~ ^[A-Za-z0-9._-]{8,128}$ ]]
@@ -145,6 +162,9 @@ jobs:
           test "$WCE_NATIVE_CORE_HOST_SIGNER_SHA256" = "$WCE_MACOS_WCDA_HOST_SIGNER_SHA256"
           test "$WCE_NATIVE_CORE_HOST_SIGNING_IDENTIFIER" = "com.lifearchive.wechatdataanalysis.backend"
           [[ "$WCE_INTEGRITY_ARTIFACT_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+          if [[ -n "${WCE_INTEGRITY_ARTIFACT_DOWNLOAD_REPOSITORY:-}" ]]; then
+            [[ "$WCE_INTEGRITY_ARTIFACT_DOWNLOAD_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+          fi
           [[ "$WCE_INTEGRITY_ARTIFACT_RUN_ID" =~ ^[1-9][0-9]*$ ]]
           [[ "$WCE_INTEGRITY_ARTIFACT_SHA256" =~ ^[0-9a-f]{64}$ ]]
           [[ ! "$WCE_INTEGRITY_ARTIFACT_SHA256" =~ ^0{64}$ ]]
@@ -163,11 +183,27 @@ jobs:
           set -euo pipefail
           test -n "$GH_TOKEN"
           artifact_dir="$RUNNER_TEMP/wda-xkey"
+          release_repository="${WCE_MACOS_XKEY_ARTIFACT_DOWNLOAD_REPOSITORY:-}"
+          release_tag="macos-xkey-$WCE_MACOS_XKEY_BUILD_ID"
+          release_asset="wda-xkey-macos-universal-production-$WCE_MACOS_XKEY_BUILD_ID.zip"
+          release_archive="$RUNNER_TEMP/$release_asset"
           downloaded=0
           for attempt in 1 2 3; do
             rm -rf "$artifact_dir"
             mkdir -p "$artifact_dir"
-            if gh run download "$WCE_MACOS_XKEY_ARTIFACT_RUN_ID" \
+            rm -f "$release_archive"
+            if [[ -n "$release_repository" ]] && \
+              gh release download "$release_tag" \
+                --repo "$release_repository" \
+                --pattern "$release_asset" \
+                --dir "$RUNNER_TEMP"
+            then
+              actual_sha256="$(shasum -a 256 "$release_archive" | awk '{print $1}')"
+              test "$actual_sha256" = "$WCE_MACOS_XKEY_ARTIFACT_SHA256"
+              /usr/bin/unzip -q "$release_archive" -d "$artifact_dir"
+              downloaded=1
+              break
+            elif gh run download "$WCE_MACOS_XKEY_ARTIFACT_RUN_ID" \
               --repo "$WCE_MACOS_XKEY_ARTIFACT_REPOSITORY" \
               --name wda-xkey-macos-universal-production \
               --dir "$artifact_dir"
@@ -192,11 +228,27 @@ jobs:
           set -euo pipefail
           test -n "$GH_TOKEN"
           artifact_dir="$RUNNER_TEMP/wechatdb-native-macos-arm64-production"
+          release_repository="${WCE_NATIVE_CORE_ARTIFACT_DOWNLOAD_REPOSITORY:-}"
+          release_tag="macos-native-$WCE_NATIVE_CORE_BUILD_ID"
+          release_asset="wechatdb-native-macos-arm64-production-$WCE_NATIVE_CORE_BUILD_ID.zip"
+          release_archive="$RUNNER_TEMP/$release_asset"
           downloaded=0
           for attempt in 1 2 3; do
             rm -rf "$artifact_dir"
             mkdir -p "$artifact_dir"
-            if gh run download "$WCE_NATIVE_CORE_ARTIFACT_RUN_ID" \
+            rm -f "$release_archive"
+            if [[ -n "$release_repository" ]] && \
+              gh release download "$release_tag" \
+                --repo "$release_repository" \
+                --pattern "$release_asset" \
+                --dir "$RUNNER_TEMP"
+            then
+              actual_sha256="$(shasum -a 256 "$release_archive" | awk '{print $1}')"
+              test "$actual_sha256" = "$WCE_NATIVE_CORE_ARTIFACT_SHA256"
+              /usr/bin/unzip -q "$release_archive" -d "$artifact_dir"
+              downloaded=1
+              break
+            elif gh run download "$WCE_NATIVE_CORE_ARTIFACT_RUN_ID" \
               --repo "$WCE_NATIVE_CORE_ARTIFACT_REPOSITORY" \
               --name wechatdb-native-macos-arm64-production \
               --dir "$artifact_dir"
@@ -224,6 +276,7 @@ jobs:
           test -n "$GH_TOKEN"
           release_tag="macos-integrity-$WCE_INTEGRITY_BUILD_ID"
           asset_name="wce-integrity-macos-arm64-production-$WCE_INTEGRITY_BUILD_ID.zip"
+          download_repository="${WCE_INTEGRITY_ARTIFACT_DOWNLOAD_REPOSITORY:-$WCE_INTEGRITY_ARTIFACT_REPOSITORY}"
           archive="$RUNNER_TEMP/$asset_name"
           artifact_dir="$RUNNER_TEMP/wce-integrity-macos-arm64-production"
           downloaded=0
@@ -231,7 +284,7 @@ jobs:
           for attempt in 1 2 3; do
             rm -f "$archive"
             if gh release download "$release_tag" \
-              --repo "$WCE_INTEGRITY_ARTIFACT_REPOSITORY" \
+              --repo "$download_repository" \
               --pattern "$asset_name" \
               --dir "$RUNNER_TEMP"
             then

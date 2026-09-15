@@ -56,7 +56,10 @@ jobs:
         id: native-artifact-source
         shell: pwsh
         env:
+          # The artifact repository identifies the producer; the download
+          # repository identifies where the immutable asset is hosted.
           NATIVE_ARTIFACT_REPOSITORY: ${{ vars.WCE_NATIVE_CORE_ARTIFACT_REPOSITORY }}
+          NATIVE_ARTIFACT_DOWNLOAD_REPOSITORY: ${{ vars.WCE_NATIVE_CORE_ARTIFACT_DOWNLOAD_REPOSITORY }}
           NATIVE_ARTIFACT_RUN_ID: ${{ vars.WCE_NATIVE_CORE_ARTIFACT_RUN_ID }}
           NATIVE_ARTIFACT_SHA256: ${{ vars.WCE_NATIVE_CORE_ARTIFACT_SHA256 }}
           NATIVE_SOURCE_REVISION: ${{ vars.WCE_NATIVE_CORE_SOURCE_REVISION }}
@@ -69,6 +72,13 @@ jobs:
           $repository = $repository.Trim()
           if ($repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') {
             throw "WCE_NATIVE_CORE_ARTIFACT_REPOSITORY must be an explicit owner/repository value."
+          }
+          $downloadRepository = [string]$env:NATIVE_ARTIFACT_DOWNLOAD_REPOSITORY
+          $downloadRepository = $downloadRepository.Trim()
+          if ([string]::IsNullOrWhiteSpace($downloadRepository)) {
+            $downloadRepository = $repository
+          } elseif ($downloadRepository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') {
+            throw "WCE_NATIVE_CORE_ARTIFACT_DOWNLOAD_REPOSITORY must be an explicit owner/repository value."
           }
 
           $rawRunId = ([string]$env:NATIVE_ARTIFACT_RUN_ID).Trim()
@@ -111,6 +121,7 @@ jobs:
           }
 
           "repository=$repository" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "download-repository=$downloadRepository" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "run-id=$runId" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "artifact-sha256=$artifactSha256" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "source-revision=$sourceRevision" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
@@ -192,7 +203,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.WCE_NATIVE_CORE_ARTIFACT_READ_TOKEN }}
-          NATIVE_REPOSITORY: ${{ steps.native-artifact-source.outputs.repository }}
+          NATIVE_REPOSITORY: ${{ steps.native-artifact-source.outputs.download-repository }}
           NATIVE_BUILD_ID: ${{ steps.native-artifact-source.outputs.build-id }}
           NATIVE_ARTIFACT_SHA256: ${{ steps.native-artifact-source.outputs.artifact-sha256 }}
         run: |
