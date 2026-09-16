@@ -251,6 +251,23 @@ async def _prefetch_sns_remote_media(
                             result.results[task_id] = fetched
             except asyncio.CancelledError:
                 raise
+            except OSError as exc:
+                # A full disk is a task-level pause condition.  Do not turn it into
+                # an ordinary missing-media warning, otherwise automatic resume
+                # cannot distinguish storage failure from an expired CDN object.
+                if getattr(exc, "errno", None) == 28:
+                    raise
+                result.failed += 1
+                result.missing.append(task_id)
+                url_identity = hashlib.sha256(
+                    _normalize_sns_cache_url(task.url).encode("utf-8", errors="ignore")
+                ).hexdigest()[:16]
+                logger.info(
+                    "sns media prefetch failed: kind=%s urlIdentity=%s errorType=%s",
+                    task.kind,
+                    url_identity,
+                    type(exc).__name__,
+                )
             except Exception as exc:
                 result.failed += 1
                 result.missing.append(task_id)
@@ -897,6 +914,64 @@ def _collect_sns_remote_media_tasks(
                         url=live_url,
                         key=str(live_photo.get("key") or media.get("videoKey") or ""),
                         token=_pick_sns_media_str(live_photo.get("token")),
+                    )
+                )
+
+        # Image comments are stored outside the post media list.  Include them in
+        # background archival so a completed contact sync is not missing content
+        # that is already visible to the logged-in account.
+        comments = post.get("comments") if isinstance(post.get("comments"), list) else []
+        for comment in comments:
+            if not isinstance(comment, dict):
+                continue
+            images = comment.get("images") if isinstance(comment.get("images"), list) else []
+            for image in images:
+                if not isinstance(image, dict):
+                    continue
+                original_url = str(image.get("url") or "").strip()
+                raw_url = str(
+                    original_url
+                    or image.get("thumbUrl")
+                    or image.get("thumb")
+                    or ""
+                ).strip()
+                if not raw_url:
+                    continue
+                try:
+                    expected_width = int(image.get("width") or 0)
+                except Exception:
+                    expected_width = 0
+                try:
+                    expected_height = int(image.get("height") or 0)
+                except Exception:
+                    expected_height = 0
+                url_attrs = image.get("urlAttrs") if isinstance(image.get("urlAttrs"), dict) else {}
+                thumb_attrs = (
+                    image.get("thumbAttrs")
+                    if isinstance(image.get("thumbAttrs"), dict)
+                    else {}
+                )
+                if original_url:
+                    key = str(image.get("key") or url_attrs.get("key") or "")
+                    token = str(image.get("token") or url_attrs.get("token") or "")
+                else:
+                    key = str(
+                        image.get("thumbKey") or thumb_attrs.get("key") or ""
+                    )
+                    token = str(
+                        image.get("thumbUrlToken")
+                        or thumb_attrs.get("token")
+                        or ""
+                    )
+                add(
+                    SnsRemoteMediaTask(
+                        kind="image",
+                        url=raw_url,
+                        key=key,
+                        token=token,
+                        expected_width=expected_width,
+                        expected_height=expected_height,
+                        require_original=bool(original_url),
                     )
                 )
     return tasks

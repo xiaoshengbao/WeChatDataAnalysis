@@ -88,7 +88,7 @@ def cited_references(text, refs):
             if key.lower() in refs and refs[key.lower()].get('kind') == kind.lower()]
 
 
-def valid_answer_references(text, evidence, references):
+def valid_answer_references(text, evidence, references, ui_artifacts=()):
     if '[[' in re.sub(r'\[\[[^\[\]]+\]\]', '', text):
         return False
     for marker in re.findall(r'\[\[([^\]]+)\]\]', text):
@@ -97,6 +97,10 @@ def valid_answer_references(text, evidence, references):
                 return False
             continue
         kind, key = marker.lower().split(':', 1)
+        if kind == 'ui':
+            if not any(item['id'] == key for item in ui_artifacts):
+                return False
+            continue
         ref = references.get(key)
         if kind not in ('person', 'image') or not ref or ref.get('kind') != kind:
             return False

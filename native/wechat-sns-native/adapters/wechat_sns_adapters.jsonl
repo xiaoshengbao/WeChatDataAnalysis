@@ -1,0 +1,2 @@
+# One self-contained JSON object per line. Records are data, never executable input.
+{"schemaVersion":1,"adapterId":"macos-arm64-wechat-4.1.5-31960-research","platform":"macos","architecture":"arm64","wechatVersion":"4.1.5","binarySha256":"20f355ca7269a51fbc29e4b50ec4e74bdcac53f47e93dbc49245231f4f202b6d","status":"research_required","requestEntryPattern":"","responseCursorPattern":"","databaseWritePattern":""}

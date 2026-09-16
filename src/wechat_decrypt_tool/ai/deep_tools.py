@@ -19,6 +19,7 @@ from .deep_synchronization import serialized
 from .deep_validation import requires_complete_analysis, requires_findings
 from .deep_calculation import CalculationTerm, calculate
 from .deep_planning import REVISION, MainWork, BranchWork
+from .analysis_ui import UISpec, create_analysis_ui as save_analysis_ui
 
 
 class ScopeError(ValueError):
@@ -790,7 +791,15 @@ class ChatGateway:
             result = calculate(terms, operation)
             key = hashlib.sha256(json.dumps([scope_handle, operation, [t.model_dump() for t in terms]], sort_keys=True).encode()).hexdigest()[:24]
             self.put('calculation:' + key, 'deep_calculation', {'terms':[t.model_dump() for t in terms], **result})
-            return result
+            return {**result, 'calculation_id': key}
+
+        @tool
+        def create_analysis_ui(title: str, spec: UISpec, scope_handle: str = '', calculation_id: str = '', reuse_ui_id: str = '') -> dict:
+            """按需组合界面，非每次必用；用户要求纯文字时不用。spec=root/elements树：Stack/Grid排版，MetricCard绑定dataset/field，DataTable绑定dataset/columns，Chart绑定dataset/chart_type/x/y（热力图另填value），SourceList绑定sources。
+            count_messages后绑定totals(total_messages,active_senders)、daily_totals(day,count)、sender_ranking(sender_id,sender,count)、by_day_sender(day,sender_id,count)。成员维度用sender_id。发现用findings(text,event_time,evidence_status)；计算传calculation_id，用calculation(value,event_count)或calculation_terms(event_key,value)。所有数据来自scope_handle的已保存结果。
+            修改已有界面时只填reuse_ui_id复用同对话快照。返回reference单独一行插入回答。不执行代码或发起查询。
+            """
+            return save_analysis_ui(self, title, spec, scope_handle, calculation_id, reuse_ui_id)
 
         @tool
         def search_material(scope_handle: str, query: str = '', source: str = '', offset: int = 0) -> dict:
@@ -914,6 +923,8 @@ class ChatGateway:
         tools = [select_chat_scope, search_messages, search_live_messages, read_messages, commit_findings, read_context, count_messages, read_results, calculate_values, search_material, read_material, analyze_media]
         # 构建旧检查点图时只读配置，不执行当前版本 guard；工具执行时仍逐次校验。
         run = self.service.run(self.id)
+        if not run.get('parent_run_id') and run.get('subtask_plan_version') == REVISION:
+            tools.append(create_analysis_ui)
         if run.get('subtask_plan_version') == REVISION:
             if run.get('parent_run_id'):
                 return [read_messages, commit_findings, read_context, read_material, analyze_media]

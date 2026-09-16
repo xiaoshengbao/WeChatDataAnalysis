@@ -135,6 +135,13 @@ function main() {
   const nativeClient = path.join(nativeCore.artifactDir, "libwechatdb_client.dylib");
   const nativeBroker = path.join(nativeCore.artifactDir, "wechatdb_broker");
   const nativeManifest = path.join(nativeCore.artifactDir, "wechatdb_native_build.json");
+  const snsNative = path.join(
+    repoRoot,
+    "src",
+    "wechat_decrypt_tool",
+    "native",
+    "libwechat_sns_native.dylib"
+  );
   const imageLibrary = path.join(nativeRoot, "universal", "libwx_key.dylib");
   const imageHelper = path.join(nativeRoot, "universal", "image_scan_helper");
   verifyHelperManifest(imageHelper);
@@ -146,6 +153,7 @@ function main() {
     // GitHub artifact extraction does not preserve executable bits. The
     // backend staging step restores the broker mode before PyInstaller runs.
     verifyBinary(nativeBroker, { requiredArchitectures: [targetArchitecture] }),
+    verifyBinary(snsNative, { requiredArchitectures: [targetArchitecture] }),
     {
       path: path.relative(repoRoot, nativeManifest),
       kind: "native-core-manifest",

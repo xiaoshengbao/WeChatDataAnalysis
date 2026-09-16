@@ -36,7 +36,8 @@ from .deep_planning import REVISION, CHILD_SYSTEM, PLANNING_RULES
 
 
 SYSTEM = '''你是中文微信只读分析助手。问候、闲聊和能力说明直接回答，不调用工具或创建计划。
-能力限于聊天搜索、原文回查、范围总结、程序统计、按需图片与附件解析及任务内部笔记。不读取网页、不发送微信消息、不执行终端命令、不读写电脑文件，不承诺未提供的导出格式。
+能力限于聊天搜索、原文回查、范围总结、程序统计、按需图片与附件解析、可选分析界面及任务内部笔记。不读取网页、不发送微信消息、不执行终端命令、不读写电脑文件，不承诺未提供的导出格式。
+可选 create_analysis_ui 将已保存数据组合为图表、指标卡和表格。仅趋势、分布或对比确有帮助时主动使用；普通问答、单值和用户要求纯文字时不用。正文单独一行放工具返回的 [[ui:编号]]；修改图形可复用快照，不补造数据。
 仅在问题需要聊天资料时使用 select_chat_scope，再搜索或读取。未指定对象时用当前聊天，无当前聊天才查全部；没有时间要求才查全历史。“最近”没有其他限定或继承范围时默认近7天并说明假设；只有用户要求或已有证据显示需要回溯时再扩大，不要先遍历全历史来决定范围。
 按用户的覆盖要求选择工作量。普通问答、重点概览证据足够即答，说明实际覆盖范围，不必翻完所有搜索页。完整报告、不遗漏的时间线和全部提取须选择 complete=true。只有问题需要精确数量才用 mode=statistics 和 count_messages，统计完成不等于内容分析完成。
 完整范围每页 read_messages 后先 commit_findings，即使没有相关发现也提交空列表；has_more 时继续，不能提前宣称完成。
@@ -92,6 +93,13 @@ class RuntimeEvents(AgentMiddleware):
         run = self.gateway.guard()
         state = {'run_id': run['id'], 'version': run['version'], 'scopes': self.gateway.progress_state()[-8:],
             'scope_instruction': '只有当前任务版本已注册的范围可执行。历史工具记录中的句柄、分页编号和完成状态只是历史资料，不代表本轮可用范围。'}
+        thread = self.service.thread(run['thread_id'], run['account'])
+        ui = {a['id']: a for m in thread['messages'] for a in m.get('ui_artifacts', [])}
+        ui.update({a['id']: a for a in run.get('ui_artifacts', [])})
+        if ui:
+            state['saved_analysis_ui'] = [{'id': a['id'], 'title': a['title'],
+                'datasets': {key: value['columns'] for key, value in a['datasets'].items()}}
+                for a in list(ui.values())[-8:]]
         if not state['scopes']:
             state['next_tool'] = 'select_chat_scope'
             state['instruction'] = '本轮尚未选择查询范围。需要查询聊天时先 select_chat_scope，再使用返回的 scope_handle；闲聊可直接回答。'
@@ -203,6 +211,10 @@ class RuntimeEvents(AgentMiddleware):
         full_pending = not planned and scope and scope['mode'] != 'statistics' and scope['complete_required'] and not self.gateway.scope_covered(scope, self.gateway.scopes(), analyzed=True, ignore_warnings=True)
         paths = TaskBackend(self.service, run['id'], run['version']).files() if not run.get('scope_handle') else {}
         file_tools = {'read_file', 'ls', 'grep'} if paths else set()
+        with self.service.store.connection() as db:
+            ui_data_ready = db.execute("SELECT 1 FROM agent_piece WHERE run_id=? AND version=? "
+                "AND kind IN ('deep_statistics_coverage','deep_calculation','finding') LIMIT 1", (run['id'], run['version'])).fetchone() is not None
+        ui_ready = ui_data_ready or bool(self.recovery().get('saved_analysis_ui'))
         if any(p.startswith(('/notes/', '/plans/', '/drafts/')) for p in paths):
             file_tools.add('edit_file')
         for entry in request.tools:
@@ -212,7 +224,9 @@ class RuntimeEvents(AgentMiddleware):
             if name == 'plan_parallel_work' and (active_plans or not self.service.planned_work.rows(run, 'work_observation')):
                 continue
             # 工具按已经发生的查询状态加载，问候无需携带全部工具和目录。
-            if not run.get('scope_handle') and name not in ('select_chat_scope', 'write_file') and name not in file_tools:
+            if not run.get('scope_handle') and name not in ('select_chat_scope', 'write_file', 'create_analysis_ui') and name not in file_tools:
+                continue
+            if name == 'create_analysis_ui' and not ui_ready:
                 continue
             if name == 'count_messages' and run.get('scope_handle') and self.gateway.scope(run['scope_handle'])['mode'] != 'statistics':
                 continue
@@ -249,6 +263,25 @@ class RuntimeEvents(AgentMiddleware):
                 spec['function']['description'] = {'ls': '列出内部资料文件。', 'grep': '搜索内部资料文字。',
                     'read_file': '分页读取内部资料，不能读取电脑文件。', 'write_file': '创建任务内部笔记。',
                     'edit_file': '修改任务内部笔记。', 'write_todos': '记录多步骤待办；待办不构成子任务启动权限。'}[name]
+                definitions.append(spec)
+            elif name == 'create_analysis_ui':
+                spec = json.loads(json.dumps(convert_to_openai_tool(entry)))
+                def trim_ui_schema(node):
+                    if isinstance(node, dict):
+                        for field in ('description', 'default', 'title'):
+                            if field in node and not isinstance(node[field], dict):
+                                node.pop(field, None)
+                        for value in node.values():
+                            trim_ui_schema(value)
+                    elif isinstance(node, list):
+                        for value in node:
+                            trim_ui_schema(value)
+                trim_ui_schema(spec['function']['parameters'])
+                spec['function']['description'] = ('可选分析界面。spec=root/elements树，节点含type/props/children。'
+                    '布局Stack/Grid；MetricCard用dataset/field；Chart用dataset/chart_type/x/y，热力图另填value；DataTable用dataset/columns；SourceList用sources。'
+                    '数据集：totals(total_messages,active_senders)、daily_totals(day,count)、sender_ranking(sender_id,count)、by_day_sender(day,sender_id,count)、'
+                    'findings(text,event_time,evidence_status)、calculation(value,event_count)、calculation_terms(event_key,value)。'
+                    '新界面用scope_handle，计算另填calculation_id；改图只用reuse_ui_id。返回reference单独一行插入正文。')
                 definitions.append(spec)
             elif getattr(entry, 'name', None) == 'task':
                 if planned and not active_plans:
@@ -356,7 +389,7 @@ class RuntimeEvents(AgentMiddleware):
         label = {'select_chat_scope': '确定查询范围', 'search_messages': '搜索聊天记录', 'read_messages': '读取聊天记录',
             'plan_parallel_work': '规划并行分工', 'record_main_analysis': '保存主线分析',
             'wait_subtasks': '等待必要分支结果', 'finish_parallel_work': '整合分支证据', 'read_results': '读取分析成果',
-            'commit_findings': '保存分析发现', 'count_messages': '统计消息', 'calculate_values': '计算已确认事件', 'read_context': '回查原文上下文',
+            'commit_findings': '保存分析发现', 'count_messages': '统计消息', 'calculate_values': '计算已确认事件', 'create_analysis_ui': '生成分析界面', 'read_context': '回查原文上下文',
             'task': '执行独立子任务', 'write_todos': '更新分析计划', 'read_file': '回查内部资料',
             'analyze_media': '分析图片与附件'}.get(name, name)
         entry = self.service.timeline_item(run['id'], 'tool', label, item_id='tool:' + call['id'], status='running',
@@ -950,7 +983,7 @@ class DeepAgentRuntime(ParallelAnalysis):
             issues.extend(coverage_claim_issues(text, run))
             issues.extend(temporal_issues(text, originals, run['timezone_offset']))
             issues.extend(reported_scope_issues(text, run, originals))
-            if not valid_answer_references(text, originals, refs):
+            if not valid_answer_references(text, originals, refs, run.get('ui_artifacts', [])):
                 issues.append('正文包含未知或类型不正确的引用编号。')
             try:
                 check_quoted_sources(text, quoted_originals, refs, candidate_lookup=quote_candidates)
@@ -960,7 +993,7 @@ class DeepAgentRuntime(ParallelAnalysis):
             # 普通概览同样可能误判发言归属和结果状态，不能只核验时间类问题。
             grounded_answer = bool(originals) and run.get('intent', {}).get('mode') != 'statistics'
             # 已知引用、日期等确定错误先修复，避免整份报告在错误修复前后各核查一次。
-            if not issues and valid_answer_references(text, originals, refs) and not run.get('parent_run_id') and (full_report or grounded_answer):
+            if not issues and valid_answer_references(text, originals, refs, run.get('ui_artifacts', [])) and not run.get('parent_run_id') and (full_report or grounded_answer):
                 issues.extend(report_display_issues(text, run['input_digest']))
                 issues.extend(await evidence_issues(self, run, version, text, originals, media_results))
                 if full_report:
@@ -995,6 +1028,7 @@ class DeepAgentRuntime(ParallelAnalysis):
                         'is_self': m['sender_id'] == run['account'] if m.get('sender_id') and run.get('account') else None,
                         'sent_at': datetime.fromtimestamp(m['time'], timezone(timedelta(seconds=run['timezone_offset']))).isoformat()} for m in sources[:80]],
                     'program_coverage': run.get('analysis', {}), 'scope_names': run.get('scope_names', {}),
+                    'valid_ui_references': ['[[ui:' + a['id'] + ']]' for a in run.get('ui_artifacts', [])],
                     'references': [{k: v for k, v in r.items() if k in ('id', 'kind', 'name', 'source')} for r in refs.values()]}, ensure_ascii=False))
             response = await model.ainvoke([request], config={'callbacks': [], 'tags': ['internal']})
             self.workspace.put(id, version, 'repair:' + uuid.uuid4().hex, 'deep_answer_repair',

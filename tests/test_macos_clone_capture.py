@@ -131,6 +131,21 @@ class TestMacOSCloneCapture(unittest.TestCase):
         self.assertIn("if ENABLE_KEY_RETURN_FALLBACK:", script)
         self.assertIn('BreakpointCreateByName("CCKeyDerivationPBKDF")', script)
 
+    def test_lldb_capture_can_signal_monitor_readiness_without_a_secret(self) -> None:
+        script = build_lldb_salt_capture_script(
+            Path("/tmp/result.json"),
+            ["12" * 16],
+            probe_page1=b"x" * 4096,
+            ready_file=Path("/tmp/ready.json"),
+        )
+
+        ast.parse(script)
+        self.assertIn('READY_PATH = "/tmp/ready.json"', script)
+        self.assertIn('"status": "ready"', script)
+        self.assertIn('"method": "macos_lldb_stub"', script)
+        self.assertIn("target.GetProcess().GetProcessID()", script)
+        self.assertNotIn('"passphrase": normalized.hex()', script[script.index("def _write_ready"):script.index("def _record_diagnostic")])
+
     def test_prepared_capture_arms_resolved_internal_return_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
             debug_root = Path(temporary_dir)
@@ -525,6 +540,24 @@ class TestMacOSCloneCapture(unittest.TestCase):
             self.assertFalse(result.is_symlink())
             self.assertEqual((result / "marker").read_text(encoding="utf-8"), "private-copy")
             self.assertFalse((external / "marker").exists())
+
+    @unittest.skipUnless(sys.platform == "darwin", "APFS clonefile is macOS-specific")
+    def test_private_snapshot_accepts_direct_local_xwechat_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir)
+            source_documents = root / "source/Documents"
+            direct_source = source_documents / "xwechat_files"
+            direct_source.mkdir(parents=True)
+            (direct_source / "marker").write_text("direct-local", encoding="utf-8")
+            cloned_documents = root / "clone/Documents"
+            cloned_documents.mkdir(parents=True)
+
+            _materialize_private_xwechat_files(source_documents, cloned_documents)
+
+            result = cloned_documents / "xwechat_files"
+            self.assertTrue(result.is_dir())
+            self.assertFalse(result.is_symlink())
+            self.assertEqual((result / "marker").read_text(encoding="utf-8"), "direct-local")
 
     @unittest.skipUnless(sys.platform == "darwin", "APFS clonefile is macOS-specific")
     def test_private_snapshot_refuses_xwechat_source_symlink(self) -> None:

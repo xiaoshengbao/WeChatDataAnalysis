@@ -1,0 +1,66 @@
+{
+  "document": "../../ai-assistant-requirements-2026-09-10.md",
+  "copied_on": "2026-09-10",
+  "images": [
+    {
+      "id": "S01",
+      "round": "第一轮",
+      "title": "侧栏执行过程与输入区",
+      "file": "01-sidebar-process-and-composer.png",
+      "original_path": "/Users/sheng/Library/Containers/com.tencent.qq/Data/Library/Application Support/QQ/nt_qq_498bfccc0d1129c66d680d60e79eadba/nt_data/Pic/2026-09/Ori/d2fd9323636e979d62a33ca0bfe11f51.png",
+      "sha256": "3c1f696a96d69af9293d0544f019a8a8175ea98abbc47503afe59e95e31b70b6",
+      "bytes": 522053,
+      "width": 1920,
+      "height": 1020,
+      "requirements": "UI-01～UI-06"
+    },
+    {
+      "id": "S02",
+      "round": "第二轮",
+      "title": "来源头像与消息悬停预览",
+      "file": "02-source-avatar-tooltip.png",
+      "original_path": "/var/folders/rc/rlv7nb4j2yv8k26_7pdgr68h0000gn/T/codex-clipboard-eca87685-235d-4446-9e82-7fd35978b647.png",
+      "sha256": "84ee84d7ee41e505b9a48775917e654379e198ebbc4649dd491a0a01e32b3b51",
+      "bytes": 161559,
+      "width": 1103,
+      "height": 546,
+      "requirements": "REF-01～REF-04"
+    },
+    {
+      "id": "S03",
+      "round": "第三轮",
+      "title": "切回窗口后空白加载",
+      "file": "03-window-return-reloading.png",
+      "original_path": "/var/folders/rc/rlv7nb4j2yv8k26_7pdgr68h0000gn/T/codex-clipboard-16915a7e-607a-48f2-88f3-0ec24dda2ed9.png",
+      "sha256": "eeed71b9f60223bd808f37447f75977c43ec704e0d5fe7d6a1e34561bfeb4090",
+      "bytes": 15661,
+      "width": 877,
+      "height": 660,
+      "requirements": "UI-07"
+    },
+    {
+      "id": "S04",
+      "round": "第四轮·图1",
+      "title": "正文人物标签需求标注",
+      "file": "04-person-mention-annotation.png",
+      "original_path": "/var/folders/rc/rlv7nb4j2yv8k26_7pdgr68h0000gn/T/codex-clipboard-9ba34f94-7655-4dd4-89ec-15a2855a8e8c.png",
+      "sha256": "5130d0ee8d87c5319d851c9ba675cc2998a5efc11d9d2e103aee8cf8db89507e",
+      "bytes": 213225,
+      "width": 1074,
+      "height": 570,
+      "requirements": "PERSON-01～PERSON-03"
+    },
+    {
+      "id": "S05",
+      "round": "第四轮·图2",
+      "title": "行内胶囊标签样式参考",
+      "file": "05-inline-chip-reference.png",
+      "original_path": "/var/folders/rc/rlv7nb4j2yv8k26_7pdgr68h0000gn/T/codex-clipboard-9c0c18b1-3423-4974-a526-42aecd27bc39.png",
+      "sha256": "090f1eced4f6d3adaac6d3cdf5fe07836841d51472016ff8c0e95d7a2d052d27",
+      "bytes": 2810,
+      "width": 145,
+      "height": 51,
+      "requirements": "PERSON-01～PERSON-03"
+    }
+  ]
+}

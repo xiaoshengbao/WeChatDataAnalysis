@@ -35,6 +35,7 @@ class _FullSyncProgress:
 @dataclass
 class _FullSyncJob:
     account_dir: Path
+    target_username: str = ""
     sync_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     status: str = "queued"
     created_at: int = field(default_factory=lambda: int(time.time() * 1000))
@@ -87,6 +88,7 @@ class SnsFullSyncManager:
             "finishedAt": job.finished_at,
             "cancelRequested": bool(job.cancel_requested),
             "snapshotVersion": job.snapshot_version,
+            "targetUsername": job.target_username,
             "progress": {
                 "phase": progress.phase,
                 "sourceRowsTotal": total,
@@ -109,15 +111,20 @@ class SnsFullSyncManager:
             job = self._latest_by_account.get(key)
             return self._public_job_locked(job) if job is not None else None
 
-    def start(self, account_dir: Path) -> tuple[dict[str, Any], bool]:
+    def start(
+        self, account_dir: Path, target_username: str = ""
+    ) -> tuple[dict[str, Any], bool]:
         resolved = Path(account_dir).resolve()
+        target = str(target_username or "").strip()
+        if "\x00" in target or len(target.encode("utf-8")) > 255:
+            raise ValueError("target_username is invalid")
         key = self._account_key(resolved)
         with self._mu:
             current = self._latest_by_account.get(key)
             if current is not None and current.status in _ACTIVE_STATUSES:
                 return self._public_job_locked(current), True
 
-            job = _FullSyncJob(account_dir=resolved)
+            job = _FullSyncJob(account_dir=resolved, target_username=target)
             self._latest_by_account[key] = job
             public = self._public_job_locked(job)
 
@@ -178,6 +185,7 @@ class SnsFullSyncManager:
         with self._mu:
             job.status = "cancelled"
             job.finished_at = int(time.time() * 1000)
+            self._publish(job, "full_sync_cancelled")
         logger.info(
             "[sns.full-sync] status=cancelled sync_id=%s phase=%s batches=%s scanned=%s prepared=%s changed=%s unchanged=%s skipped=%s elapsed_ms=%s",
             job.sync_id,
@@ -190,7 +198,6 @@ class SnsFullSyncManager:
             job.progress.skipped,
             int((time.monotonic() - started_monotonic) * 1000),
         )
-        self._publish(job, "full_sync_cancelled")
 
     def _finish_error(
         self,
@@ -206,6 +213,7 @@ class SnsFullSyncManager:
             job.status = "error"
             job.finished_at = int(time.time() * 1000)
             job.error = {"code": code, "message": message}
+            self._publish(job, "full_sync_error")
         logger.error(
             "[sns.full-sync] status=error sync_id=%s phase=%s code=%s error_type=%s batches=%s scanned=%s prepared=%s changed=%s unchanged=%s skipped=%s elapsed_ms=%s",
             job.sync_id,
@@ -220,7 +228,6 @@ class SnsFullSyncManager:
             job.progress.skipped,
             int((time.monotonic() - started_monotonic) * 1000),
         )
-        self._publish(job, "full_sync_error")
 
     @staticmethod
     def _row_value(row: dict[str, Any], name: str, default: Any = None) -> Any:
@@ -258,11 +265,16 @@ class SnsFullSyncManager:
         self,
         connection: Any,
         source_path: Path,
+        *,
+        target_username: str = "",
     ) -> tuple[str, int, Optional[int], Optional[int]]:
         valid_where = (
             "tid IS NOT NULL AND user_name IS NOT NULL AND user_name != '' "
             "AND content IS NOT NULL AND content != ''"
         )
+        if target_username:
+            literal = "'" + target_username.replace("'", "''") + "'"
+            valid_where += f" AND user_name = {literal}"
         last_exc: Optional[BaseException] = None
         for cursor_column in ("rowid", "tid"):
             sql = (
@@ -295,6 +307,7 @@ class SnsFullSyncManager:
         max_cursor: int,
         after_cursor: Optional[int],
         include_pack: bool,
+        target_username: str = "",
     ) -> tuple[list[dict[str, Any]], bool]:
         lower = (
             f"{cursor_column} >= {int(min_cursor)}"
@@ -306,6 +319,9 @@ class SnsFullSyncManager:
             "AND tid IS NOT NULL AND user_name IS NOT NULL AND user_name != '' "
             "AND content IS NOT NULL AND content != ''"
         )
+        if target_username:
+            literal = "'" + target_username.replace("'", "''") + "'"
+            where_sql += f" AND user_name = {literal}"
         select_pack = ", pack_info_buf" if include_pack else ""
         sql = (
             f"SELECT {cursor_column} AS source_cursor, tid, user_name, content{select_pack} "
@@ -326,6 +342,7 @@ class SnsFullSyncManager:
                 max_cursor=max_cursor,
                 after_cursor=after_cursor,
                 include_pack=False,
+                target_username=target_username,
             )
 
     def _run_job(self, _key: str, job: _FullSyncJob) -> None:
@@ -384,6 +401,7 @@ class SnsFullSyncManager:
                 cursor_column, total, min_cursor, max_cursor = self._count_and_bounds(
                     connection,
                     source_path,
+                    target_username=job.target_username,
                 )
             except Exception as exc:
                 self._finish_error(
@@ -427,6 +445,7 @@ class SnsFullSyncManager:
                     max_cursor=max_cursor,
                     after_cursor=after_cursor,
                     include_pack=include_pack,
+                    target_username=job.target_username,
                 )
                 if not rows:
                     break
@@ -508,7 +527,11 @@ class SnsFullSyncManager:
 
             if max_tid_unsigned > 0:
                 state = _read_sns_realtime_sync_state(job.account_dir)
-                state["maxId"] = str(max_tid_unsigned)
+                try:
+                    previous_max = int(str(state.get("maxId") or "0"))
+                except Exception:
+                    previous_max = 0
+                state["maxId"] = str(max(previous_max, max_tid_unsigned))
                 state["updatedAt"] = int(time.time() * 1000)
                 if not _write_sns_realtime_sync_state(job.account_dir, state):
                     self._finish_error(
@@ -525,6 +548,7 @@ class SnsFullSyncManager:
                 job.status = "done"
                 job.finished_at = int(time.time() * 1000)
                 job.snapshot_version = str(snapshot.get("version") or "")
+                self._publish(job, "full_sync_done")
             logger.info(
                 "[sns.full-sync] status=done sync_id=%s phase=finalizing batches=%s scanned=%s total=%s prepared=%s changed=%s unchanged=%s skipped=%s elapsed_ms=%s",
                 job.sync_id,
@@ -537,7 +561,6 @@ class SnsFullSyncManager:
                 job.progress.skipped,
                 int((time.monotonic() - started_monotonic) * 1000),
             )
-            self._publish(job, "full_sync_done")
         except Exception as exc:
             self._finish_error(
                 job,

@@ -1,6 +1,7 @@
 import importlib
 import logging
 import os
+import stat
 import sys
 import unittest
 from pathlib import Path
@@ -83,6 +84,7 @@ class TestOutputDirOverride(unittest.TestCase):
         self.key_store.upsert_account_keys_in_store("wxid_test", db_key="abc123")
         key_store_path = Path(self._output_dir.name) / "account_keys.json"
         self.assertTrue(key_store_path.exists())
+        self.assertEqual(stat.S_IMODE(key_store_path.stat().st_mode), 0o600)
         self.assertEqual(
             self.key_store.get_account_keys_from_store("wxid_test").get("db_key"),
             "abc123",

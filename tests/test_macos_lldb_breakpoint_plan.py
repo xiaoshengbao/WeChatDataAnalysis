@@ -140,6 +140,35 @@ class TestMacOSLLDBBreakpointPlan(unittest.TestCase):
                     self.assertEqual(writes[-1]["status"], "ready")
                     process.Detach.assert_not_called()
 
+    def test_failed_ready_write_detaches_without_announcing_readiness(self):
+        namespace = self.namespace(self.scripts()[1])
+        target, _module, process = self.target()
+        namespace["_write_ready"] = Mock(return_value=False)
+        with patch.object(namespace["os"], "_exit", side_effect=SystemExit) as exit_process, patch("builtins.print") as announce:
+            with self.assertRaises(SystemExit):
+                namespace["_setup"](types.SimpleNamespace(GetSelectedTarget=lambda: target), None, None, None)
+        exit_process.assert_called_once_with(25)
+        process.Detach.assert_called_once_with()
+        announce.assert_not_called()
+
+    def test_ready_file_alias_preserves_transaction_metadata(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ready = Path(temp_dir) / "ready.json"
+            ready.touch()
+            script = build_lldb_salt_capture_script(
+                Path(temp_dir) / "result.json", [b"x" * 16],
+                ready_file=ready, transaction_id="synthetic-transaction",
+                pbkdf_stub_plan={SYNTHETIC_UUID: STUB_OFFSET},
+            )
+            namespace = self.namespace(script)
+            target, _module, _process = self.target()
+            namespace["_setup"](types.SimpleNamespace(GetSelectedTarget=lambda: target), None, None, None)
+            payload = json.loads(ready.read_text())
+            self.assertEqual(payload["status"], "ready")
+            self.assertEqual(payload["transaction_id"], "synthetic-transaction")
+            self.assertEqual(payload["pid"], 123)
+            self.assertNotIn("passphrase", payload)
+
     def test_unresolved_nonexecutable_unloaded_or_wrong_uuid_never_becomes_ready(self):
         scenarios = (
             {"address": FakeAddress(valid=False)},

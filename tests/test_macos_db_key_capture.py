@@ -200,6 +200,9 @@ class TestMacOSDBKeyCapture(unittest.TestCase):
         command = _build_lldb_capture_command(Path("/tmp/capture script.lldb"), 180)
         for expected in ("/usr/bin/mkfifo", "producer_pid", "watchdog_pid", "lldb_pid", "/bin/kill", "WEDATA_LLDB_EXIT"):
             self.assertIn(expected, command)
+        self.assertIn("cd /private/tmp", command)
+        self.assertIn("-u PYTHONPATH -u PYTHONHOME", command)
+        self.assertIn('wait "$watchdog_pid"', command)
 
     def test_ad_hoc_debug_copy_must_not_claim_any_entitlements(self) -> None:
         incompatible = subprocess.CompletedProcess(

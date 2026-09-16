@@ -22,7 +22,7 @@ class TestLLDBCommandLifecycle(unittest.TestCase):
     def command(self, stub: str, timeout: int = 3) -> list[str]:
         args = shlex.split(_build_lldb_capture_command(Path("/dev/null"), timeout))
         self.assertEqual(args[:2], ["/bin/bash", "-c"])
-        launcher = "/usr/bin/env TERM=dumb /usr/bin/lldb"
+        launcher = "/usr/bin/env -u PYTHONPATH -u PYTHONHOME TERM=dumb /usr/bin/lldb"
         self.assertEqual(args[2].count(launcher), 1)
         args[2] = args[2].replace(launcher, stub)
         self.assertNotIn("/usr/bin/lldb", args[2])

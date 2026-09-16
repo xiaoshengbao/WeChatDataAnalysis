@@ -18,6 +18,7 @@ const {
   assertWindowsNativeAsrCapability,
   windowsNativeAsrManifestErrors,
 } = require("../src/windows-native-asr-capability.cjs");
+const { buildSnsNativeCompanion } = require("./build-sns-native.cjs");
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const entry = path.join(repoRoot, "src", "wechat_decrypt_tool", "backend_entry.py");
@@ -603,6 +604,7 @@ function main() {
   fs.mkdirSync(specDir, { recursive: true });
 
   const integrityNativeBinary = buildIntegrityNativeBinary();
+  buildSnsNativeCompanion();
   prepareRuntimeNativeDir(nativeDir, runtimeNativeDir);
   stageNativeCoreArtifacts();
   stageMacosXkeyArtifacts({ destinationNativeDir: runtimeNativeDir });

@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "title": "项目协作群消息统计（2026-09-01 至 09-09）",
+  "spec": {
+    "root": "root",
+    "elements": {
+      "root": {
+        "type": "Stack",
+        "props": {
+          "title": ""
+        },
+        "children": [
+          "m_total",
+          "m_senders",
+          "c_daily",
+          "t_rank"
+        ]
+      },
+      "m_total": {
+        "type": "MetricCard",
+        "props": {
+          "title": "消息总数",
+          "dataset": "totals",
+          "field": "total_messages"
+        },
+        "children": []
+      },
+      "m_senders": {
+        "type": "MetricCard",
+        "props": {
+          "title": "活跃成员数",
+          "dataset": "totals",
+          "field": "active_senders"
+        },
+        "children": []
+      },
+      "c_daily": {
+        "type": "Chart",
+        "props": {
+          "title": "每日消息量",
+          "dataset": "daily_totals",
+          "chart_type": "bar",
+          "x": "day",
+          "y": "count",
+          "value": "",
+          "series": ""
+        },
+        "children": []
+      },
+      "t_rank": {
+        "type": "DataTable",
+        "props": {
+          "title": "成员消息排行",
+          "dataset": "sender_ranking",
+          "columns": [
+            "sender",
+            "count"
+          ]
+        },
+        "children": []
+      }
+    }
+  },
+  "datasets": {
+    "totals": {
+      "rows": [
+        {
+          "total_messages": 6,
+          "active_senders": 2
+        }
+      ],
+      "columns": [
+        "total_messages",
+        "active_senders"
+      ],
+      "numeric": [
+        "total_messages",
+        "active_senders"
+      ]
+    },
+    "daily_totals": {
+      "rows": [
+        {
+          "day": "2026-09-01",
+          "count": 1
+        },
+        {
+          "day": "2026-09-02",
+          "count": 1
+        },
+        {
+          "day": "2026-09-03",
+          "count": 1
+        },
+        {
+          "day": "2026-09-04",
+          "count": 1
+        },
+        {
+          "day": "2026-09-05",
+          "count": 1
+        },
+        {
+          "day": "2026-09-06",
+          "count": 0
+        },
+        {
+          "day": "2026-09-07",
+          "count": 0
+        },
+        {
+          "day": "2026-09-08",
+          "count": 1
+        }
+      ],
+      "columns": [
+        "day",
+        "count"
+      ],
+      "numeric": [
+        "count"
+      ],
+      "note": ""
+    },
+    "sender_ranking": {
+      "rows": [
+        {
+          "sender_id": "lin",
+          "sender": "小林",
+          "count": 3
+        },
+        {
+          "sender_id": "ming",
+          "sender": "阿明",
+          "count": 3
+        }
+      ],
+      "columns": [
+        "sender_id",
+        "sender",
+        "count"
+      ],
+      "numeric": [
+        "count"
+      ]
+    }
+  },
+  "citations": [],
+  "provenance": {
+    "start": 1788192000,
+    "end": 1788883200,
+    "timezone_offset": 28800,
+    "conversations": [
+      "project"
+    ],
+    "coverage": "统计范围已读取",
+    "source_note": "来源列表仅展示最多100条依据示例"
+  },
+  "derived_from": "",
+  "run_id": "45cd4995dae0410d99a29199740c80a3",
+  "version": 1,
+  "id": "f7657abfebc03cfc4d1659aa"
+}

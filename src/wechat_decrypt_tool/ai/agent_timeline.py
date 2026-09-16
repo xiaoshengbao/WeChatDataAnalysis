@@ -26,6 +26,9 @@ class AgentTimeline:
         self.update(id, timeline=retained,timeline_seq=max(x.get('seq',0) for x in items))
         event = {'type':'timeline_item', 'run_id':id, 'thread_id':run['thread_id'], 'version':run['version'], 'timeline_item':item}
         if kind in ('answer', 'progress'):
+            from .analysis_ui import referenced_artifacts
+            previous_ui = {a['id'] for a in referenced_artifacts(run, previous_text)}
+            event['ui_artifacts'] = [a for a in referenced_artifacts(run, text) if a['id'] not in previous_ui]
             # 新标记与已校验身份同时送达，避免正文先出现、来源等待慢速快照。
             # 只发送本次新增标记，完整映射仍由运行快照和历史保存负责。
             pattern = r'\[\[(?:(?:person|image):)?[a-f0-9]{24}\]\]|[（(\[]\s*source\s*[:：]\s*[a-f0-9]{24}\s*[）)\]]'

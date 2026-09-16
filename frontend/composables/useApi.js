@@ -502,6 +502,54 @@ export const useApi = () => {
     return await request(url, { method: 'DELETE' })
   }
 
+  const getSnsRemoteSyncCapability = async (params = {}) => {
+    const query = new URLSearchParams()
+    if (params && params.account) query.set('account', params.account)
+    const url = '/sns/remote-sync/capability' + (query.toString() ? `?${query.toString()}` : '')
+    return await request(url)
+  }
+
+  const startSnsRemoteSync = async (data = {}) => {
+    return await request('/sns/remote-sync', {
+      method: 'POST',
+      body: {
+        account: data.account || null,
+        target_username: String(data.target_username || data.targetUsername || '').trim()
+      }
+    })
+  }
+
+  const getLatestSnsRemoteSync = async (params = {}) => {
+    const query = new URLSearchParams()
+    if (params && params.account) query.set('account', params.account)
+    const url = '/sns/remote-sync/status' + (query.toString() ? `?${query.toString()}` : '')
+    return await request(url)
+  }
+
+  const getSnsRemoteSync = async (syncId, params = {}) => {
+    if (!syncId) throw new Error('Missing syncId')
+    const query = new URLSearchParams()
+    if (params && params.account) query.set('account', params.account)
+    const url = `/sns/remote-sync/${encodeURIComponent(String(syncId))}` + (query.toString() ? `?${query.toString()}` : '')
+    return await request(url)
+  }
+
+  const retrySnsRemoteSyncMedia = async (syncId, params = {}) => {
+    if (!syncId) throw new Error('Missing syncId')
+    const query = new URLSearchParams()
+    if (params && params.account) query.set('account', params.account)
+    const url = `/sns/remote-sync/${encodeURIComponent(String(syncId))}/retry-missing` + (query.toString() ? `?${query.toString()}` : '')
+    return await request(url, { method: 'POST' })
+  }
+
+  const cancelSnsRemoteSync = async (syncId, params = {}) => {
+    if (!syncId) throw new Error('Missing syncId')
+    const query = new URLSearchParams()
+    if (params && params.account) query.set('account', params.account)
+    const url = `/sns/remote-sync/${encodeURIComponent(String(syncId))}` + (query.toString() ? `?${query.toString()}` : '')
+    return await request(url, { method: 'DELETE' })
+  }
+
   const openChatMediaFolder = async (params = {}) => {
     const query = new URLSearchParams()
     if (params && params.account) query.set('account', params.account)
@@ -1227,6 +1275,12 @@ export const useApi = () => {
     startSnsFullSync,
     getSnsFullSyncStatus,
     cancelSnsFullSync,
+    getSnsRemoteSyncCapability,
+    startSnsRemoteSync,
+    getLatestSnsRemoteSync,
+    getSnsRemoteSync,
+    retrySnsRemoteSyncMedia,
+    cancelSnsRemoteSync,
     openChatMediaFolder,
     downloadChatEmoji,
     saveMediaKeys,

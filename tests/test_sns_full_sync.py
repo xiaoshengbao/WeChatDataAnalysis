@@ -71,7 +71,15 @@ def _create_source_db(root: Path, rows, *, with_pack: bool = True, without_rowid
 
 
 class TestSnsFullSync(unittest.TestCase):
-    def _run_with_source(self, manager, account_dir: Path, source_root: Path, *, events=None):
+    def _run_with_source(
+        self,
+        manager,
+        account_dir: Path,
+        source_root: Path,
+        *,
+        events=None,
+        target_username: str = "",
+    ):
         connection = _FakeConnection(source_root)
         event_list = events if events is not None else []
         with (
@@ -83,10 +91,47 @@ class TestSnsFullSync(unittest.TestCase):
                 side_effect=lambda _account, event: event_list.append(event),
             ),
         ):
-            started, reused = manager.start(account_dir)
+            started, reused = manager.start(account_dir, target_username)
             self.assertFalse(reused)
             self.assertTrue(started.get("syncId"))
             return _wait_job(manager, account_dir), event_list
+
+    def test_targeted_sync_only_reads_requested_contact_and_preserves_highwater(self):
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            account_dir = root / "decrypted" / "account-target"
+            account_dir.mkdir(parents=True)
+            state_path = account_dir / "_sns_realtime_sync_state.json"
+            state_path.write_text(json.dumps({"maxId": "9000"}), encoding="utf-8")
+            source_root = root / "source-target"
+            _create_source_db(
+                source_root,
+                [
+                    (1, "friend-a", "<TimelineObject><type>1</type></TimelineObject>", None),
+                    (2, "friend-b", "<TimelineObject><type>1</type></TimelineObject>", None),
+                    (3, "friend-a", "<TimelineObject><type>1</type></TimelineObject>", None),
+                ],
+            )
+
+            manager = sns_full_sync.SnsFullSyncManager()
+            result, _ = self._run_with_source(
+                manager,
+                account_dir,
+                source_root,
+                target_username="friend-a",
+            )
+
+            self.assertEqual(result["status"], "done")
+            self.assertEqual(result["targetUsername"], "friend-a")
+            self.assertEqual(result["progress"]["sourceRowsTotal"], 2)
+            self.assertEqual(result["progress"]["prepared"], 2)
+            with sqlite3.connect(str(account_dir / "sns.db")) as conn:
+                users = {
+                    row[0]
+                    for row in conn.execute("SELECT DISTINCT user_name FROM SnsTimeLine")
+                }
+            self.assertEqual(users, {"friend-a"})
+            self.assertEqual(json.loads(state_path.read_text())["maxId"], "9000")
 
     def test_full_sync_reads_more_than_2000_rows_and_second_run_is_unchanged(self):
         with TemporaryDirectory() as td:

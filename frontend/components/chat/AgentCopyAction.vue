@@ -6,14 +6,14 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { copyAgentText } from '~/utils/agentMarkdown'
-const props = defineProps({ text: String, citations: Array, references: Array })
+const props = defineProps({ text: String, citations: Array, references: Array, uiArtifacts: Array })
 const copied = ref(false), failed = ref(false)
 const label = computed(() => copied.value ? '已复制回答' : '复制回答')
 // 历史摘要和完整运行共用同一复制入口，复制内容包含可读的出处。
-watch(() => [props.text, props.citations, props.references], () => { copied.value = false; failed.value = false })
+watch(() => [props.text, props.citations, props.references, props.uiArtifacts], () => { copied.value = false; failed.value = false })
 const copy = async () => {
   try {
-    await navigator.clipboard.writeText(copyAgentText(props.text, props.citations, props.references))
+    await navigator.clipboard.writeText(copyAgentText(props.text, props.citations, props.references, props.uiArtifacts))
     copied.value = true; failed.value = false
   } catch { copied.value = false; failed.value = true }
 }

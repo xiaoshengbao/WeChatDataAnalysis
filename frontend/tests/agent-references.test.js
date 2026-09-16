@@ -30,7 +30,7 @@ describe('独立且经过校验的引用', () => {
   })
   it('Nuxt 自动导入扫描只暴露实际导出，防止聊天页加载失败', async () => {
     const scanned = await scanExports(resolve('utils/agentMarkdown.js'), false)
-    expect(scanned.map(item => item.name).sort()).toEqual(['copyAgentText', 'referenceUrl', 'renderAgentMarkdown'])
+    expect(scanned.map(item => item.name).sort()).toEqual(['copyAgentText', 'referenceUrl', 'renderAgentBlocks', 'renderAgentMarkdown'])
   })
   it('人物与发言人不同，拒绝错误种类、未知引用和任意头像 URL', () => {
     const html = renderAgentMarkdown(`[[person:${person.id}]] 已更新 [[${source.source}]] [[image:${person.id}]]`, [source], false, [person])

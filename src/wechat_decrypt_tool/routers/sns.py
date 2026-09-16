@@ -22,6 +22,7 @@ from starlette.background import BackgroundTask
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response, FileResponse, StreamingResponse  # 返回视频文件
+from pydantic import BaseModel, Field
 
 from ..account_identity import resolve_account_self_username
 from ..account_source_policy import account_prefers_decrypted_snapshot
@@ -33,6 +34,7 @@ from ..path_fix import PathFixRoute
 from ..perf_trace import create_perf_trace
 from ..sns_realtime_autosync import SNS_REALTIME_AUTOSYNC
 from ..sns_full_sync import SNS_FULL_SYNC
+from ..sns_remote_sync import SNS_REMOTE_SYNC
 from .. import sns_media as _sns_media
 from ..wcdb_realtime import (
     WCDBRealtimeError,
@@ -51,6 +53,11 @@ except Exception:
 logger = get_logger(__name__)
 
 router = APIRouter(route_class=PathFixRoute)
+
+
+class SnsRemoteSyncCreateRequest(BaseModel):
+    account: Optional[str] = None
+    target_username: str = Field(min_length=1, max_length=255)
 
 _SNS_VIDEO_KEY_RE = re.compile(r'<enc\s+key="(\d+)"', flags=re.IGNORECASE)
 _MP_BIZ_RE = re.compile(r"__biz=([A-Za-z0-9_=+-]+)")
@@ -1856,6 +1863,68 @@ def cancel_sns_realtime_full_sync(account: Optional[str] = None, sync_id: str = 
     job, accepted = SNS_FULL_SYNC.cancel(account_dir, sync_id)
     if not accepted:
         raise HTTPException(status_code=409, detail="同步任务已结束或任务标识不匹配")
+    return {"status": "ok", "cancelled": True, "job": job}
+
+
+@router.get("/api/sns/remote-sync/capability", summary="检测指定联系人朋友圈后台同步能力")
+def get_sns_remote_sync_capability(account: Optional[str] = None):
+    account_dir = _resolve_account_dir(account)
+    return {
+        "status": "ok",
+        "capability": SNS_REMOTE_SYNC.capability(account_dir),
+        "latestJob": SNS_REMOTE_SYNC.get_latest(account_dir),
+    }
+
+
+@router.post("/api/sns/remote-sync", summary="启动指定联系人朋友圈后台同步")
+def start_sns_remote_sync(req: SnsRemoteSyncCreateRequest):
+    account_dir = _resolve_account_dir(req.account)
+    try:
+        job, reused = SNS_REMOTE_SYNC.start(account_dir, req.target_username)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if reused and str(job.get("targetUsername") or "") != str(req.target_username).strip():
+        raise HTTPException(
+            status_code=409,
+            detail="该微信账号已有另一个联系人同步任务正在运行",
+        )
+    return {"status": "ok", "reused": reused, "job": job}
+
+
+@router.get("/api/sns/remote-sync/status", summary="获取账号最近的朋友圈后台同步任务")
+def get_latest_sns_remote_sync(account: Optional[str] = None):
+    account_dir = _resolve_account_dir(account)
+    return {"status": "ok", "job": SNS_REMOTE_SYNC.get_latest(account_dir)}
+
+
+@router.get("/api/sns/remote-sync/{sync_id}", summary="获取朋友圈后台同步任务")
+def get_sns_remote_sync(sync_id: str, account: Optional[str] = None):
+    account_dir = _resolve_account_dir(account)
+    job = SNS_REMOTE_SYNC.get(sync_id)
+    if job is None or str(job.get("account") or "") != account_dir.name:
+        raise HTTPException(status_code=404, detail="朋友圈同步任务不存在")
+    return {"status": "ok", "job": job}
+
+
+@router.post("/api/sns/remote-sync/{sync_id}/retry-missing", summary="重试缺失的朋友圈媒体")
+def retry_sns_remote_sync_media(sync_id: str, account: Optional[str] = None):
+    account_dir = _resolve_account_dir(account)
+    job, accepted = SNS_REMOTE_SYNC.retry_missing(account_dir, sync_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="朋友圈同步任务不存在")
+    if not accepted:
+        raise HTTPException(status_code=409, detail="任务正在运行或没有可重试的媒体")
+    return {"status": "ok", "job": job}
+
+
+@router.delete("/api/sns/remote-sync/{sync_id}", summary="取消朋友圈后台同步任务")
+def cancel_sns_remote_sync(sync_id: str, account: Optional[str] = None):
+    account_dir = _resolve_account_dir(account)
+    job, accepted = SNS_REMOTE_SYNC.cancel(account_dir, sync_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="朋友圈同步任务不存在")
+    if not accepted:
+        raise HTTPException(status_code=409, detail="朋友圈同步任务已经结束")
     return {"status": "ok", "cancelled": True, "job": job}
 
 

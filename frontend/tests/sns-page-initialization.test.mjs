@@ -94,6 +94,25 @@ test('朋友圈手动刷新启动全账号任务并可恢复、取消和无感�
 })
 
 
+test('指定联系人朋友圈后台任务使用完整好友列表、风险确认和 SSE 状态', async () => {
+  const source = await readFile(new URL('../pages/sns.vue', import.meta.url), 'utf8')
+  const apiSource = await readFile(new URL('../composables/useApi.js', import.meta.url), 'utf8')
+
+  assert.match(source, /Promise\.allSettled\(\[[\s\S]*?api\.listSnsUsers[\s\S]*?api\.listChatContacts/)
+  assert.match(source, /include_friends: true,[\s\S]*?include_groups: false/)
+  assert.match(source, /canRemoteSync: true/)
+  assert.match(source, /SNS_REMOTE_SYNC_RISK_ACCEPTED_KEY/)
+  assert.match(source, /只能获取当前账号可见内容/)
+  assert.match(source, /api\.startSnsRemoteSync\(\{ account, target_username: targetUsername \}\)/)
+  assert.match(source, /source\.addEventListener\('remote_sync_progress', onSnsRemoteSyncEvent\)/)
+  assert.match(source, /source\.addEventListener\('remote_sync_warning', onSnsRemoteSyncEvent\)/)
+  assert.match(source, /已到达当前账号可见范围末尾，媒体归档完成/)
+  assert.match(apiSource, /const getSnsRemoteSyncCapability = async/)
+  assert.match(apiSource, /const retrySnsRemoteSyncMedia = async/)
+  assert.match(apiSource, /const cancelSnsRemoteSync = async/)
+})
+
+
 test('朋友圈导出按钮在客户端挂载后再解除禁用，避免水合残留', async () => {
   const source = await readFile(new URL('../pages/sns.vue', import.meta.url), 'utf8')
 

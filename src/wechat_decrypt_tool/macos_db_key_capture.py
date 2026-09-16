@@ -1091,13 +1091,18 @@ def _build_lldb_capture_command(script_path: Path, timeout: int) -> str:
         "trap 'exit 129' HUP\n"
         "trap 'exit 130' INT\n"
         "trap 'exit 143' TERM\n"
+        # A privileged LLDB must not inherit a relative PYTHONPATH pointing at
+        # a TCC-protected working directory (for example ~/Documents).  LLDB's
+        # embedded Python otherwise fails while importing hashlib before the
+        # capture callback can arm its breakpoints.
+        "cd /private/tmp\n"
         '/usr/bin/mkfifo "$capture_fifo"\n'
         # ``exec`` makes the recorded producer PID become the sleep process
         # after cat finishes, so SIGTERM actually ends the keepalive instead
         # of leaving a child sleep behind while the shell waits for it.
         f"( /bin/cat {script_arg}; exec /bin/sleep {keepalive} ) > \"$capture_fifo\" &\n"
         "producer_pid=$!\n"
-        '/usr/bin/env TERM=dumb /usr/bin/lldb < "$capture_fifo" 2>&1 &\n'
+        '/usr/bin/env -u PYTHONPATH -u PYTHONHOME TERM=dumb /usr/bin/lldb < "$capture_fifo" 2>&1 &\n'
         "lldb_pid=$!\n"
         "(\n"
         '  watchdog_sleep_pid=""\n'
@@ -1120,7 +1125,7 @@ def _build_lldb_capture_command(script_path: Path, timeout: int) -> str:
         '  wait "$watchdog_sleep_pid"\n'
         '  watchdog_sleep_pid=""\n'
         '  /bin/kill -TERM "$lldb_pid" 2>/dev/null || true\n'
-        ") &\n"
+        ") </dev/null >/dev/null 2>&1 &\n"
         "watchdog_pid=$!\n"
         'wait "$lldb_pid"\n'
         "lldb_status=$?\n"

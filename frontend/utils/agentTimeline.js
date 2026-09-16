@@ -33,11 +33,13 @@ export function mergeRunEvent(current, event) {
     if (accepted === event.timeline_item) {
       next.citations = mergeReferenceData(current.citations, event.citations)
       next.references = mergeReferenceData(current.references, event.references, 'id')
+      next.ui_artifacts = mergeReferenceData(current.ui_artifacts, event.ui_artifacts, 'id')
     }
     if (accepted?.kind === 'answer' && accepted.status !== 'superseded') next.answer = accepted.text
   } else if (acceptsState) {
     next.citations = mergeReferenceData(current.citations, event.citations)
     next.references = mergeReferenceData(current.references, event.references, 'id')
+    next.ui_artifacts = mergeReferenceData(current.ui_artifacts, event.ui_artifacts, 'id')
   }
   return next
 }

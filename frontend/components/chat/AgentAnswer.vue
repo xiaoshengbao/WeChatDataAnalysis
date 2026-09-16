@@ -1,6 +1,10 @@
 <template>
   <div ref="answer" class="agent-answer">
-    <div class="agent-markdown" v-html="rendered" @error.capture="hideMissingAvatar" @click="onReference" @pointerover="hoverReference" @pointerout="leaveReference" @focusin="hoverReference" @focusout="leaveReference" />
+    <template v-for="block in blocks" :key="block.key">
+      <div v-if="block.kind === 'text'" class="agent-markdown" v-html="block.html" @error.capture="hideMissingAvatar" @click="onReference" @pointerover="hoverReference" @pointerout="leaveReference" @focusin="hoverReference" @focusout="leaveReference" />
+      <AgentAnalysisUI v-else-if="artifactsById[block.id]" :artifact="artifactsById[block.id]" @locate="$emit('locate', $event)" />
+      <p v-else role="status" class="agent-ui-pending">{{ streaming ? '分析界面加载中…' : '分析界面暂不可用' }}</p>
+    </template>
     <div v-if="selected" :key="selected.source" :id="previewId" ref="preview" popover="manual" class="agent-citation-preview" role="dialog" aria-label="消息来源预览" @pointerenter="cancelClose" @pointerleave="leaveReference" @keydown.esc.stop.prevent="closePreview(true)">
       <header><AgentAvatar :path="selected.sender_avatar_path" :name="selected.sender" /><div><strong>{{ selected.sender }}</strong><small>{{ selected.name || selected.username }} · {{ new Date(selected.time * 1000).toLocaleString() }}</small></div><button type="button" aria-label="关闭来源预览" @click="closePreview(true)"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></header>
       <p class="agent-citation-text">{{ selected.text }}</p><small v-if="selected.excerpt">此处为原文节选，可定位查看完整消息。</small>
@@ -14,12 +18,13 @@
   </div>
 </template>
 <script setup>
-import { computed, inject, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
-import { renderAgentMarkdown, referenceUrl } from '~/utils/agentMarkdown'
+import { computed, defineAsyncComponent, inject, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
+import { renderAgentBlocks, referenceUrl } from '~/utils/agentMarkdown'
 import { useApiBase } from '~/composables/useApiBase'
 import AgentImageViewer from './AgentImageViewer.vue'
 import AgentAvatar from './AgentAvatar.vue'
-const props = defineProps({ text: { type: String, default: '' }, citations: { type: Array, default: () => [] }, streaming: Boolean, references: { type: Array, default: () => [] } })
+const AgentAnalysisUI = defineAsyncComponent(() => import('./AgentAnalysisUI.vue'))
+const props = defineProps({ text: { type: String, default: '' }, citations: { type: Array, default: () => [] }, streaming: Boolean, references: { type: Array, default: () => [] }, uiArtifacts: { type: Array, default: () => [] } })
 const emit = defineEmits(['locate'])
 const apiBase = useApiBase(), selectedImage = ref(null)
 // 缺少头像时保留人名和编号，避免将浏览器破图图标显示为人物头像。
@@ -63,7 +68,8 @@ const previewId = `agent-source-${useId()}`
 const selectedNumber = ref(0), locating = ref(false), located = ref(false), locateError = ref('')
 let trigger = null, observer = null, revision = 0
 // 原始 HTML、远程图片和自动链接均禁用；只渲染本地已核验的来源按钮。
-const rendered = computed(() => renderAgentMarkdown(props.text, props.citations, props.streaming, props.references, apiBase))
+const blocks = computed(() => renderAgentBlocks(props.text, props.citations, props.streaming, props.references, apiBase))
+const artifactsById = computed(() => Object.fromEntries(props.uiArtifacts.map(a => [a.id, a])))
 const closePreview = (restoreFocus = false) => {
   ++revision; cancelClose(); pinned = false
   observer?.disconnect(); observer = null

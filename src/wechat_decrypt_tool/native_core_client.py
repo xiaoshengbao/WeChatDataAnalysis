@@ -63,6 +63,7 @@ _NATIVE_ASR_MAX_ACCOUNT_SIZE = 255
 _NATIVE_ASR_MAX_ACCOUNT_DIRECTORY_SIZE = 32 * 1024
 _NATIVE_ASR_MAX_CONVERSATION_SIZE = 255
 _NATIVE_ASR_MAX_TEXT_SIZE = 64 * 1024
+_NATIVE_MOMENTS_MAX_CURSOR_SIZE = 255
 _ENV_NATIVE_CORE_BROKER = "WECHAT_TOOL_NATIVE_CORE_BROKER"
 _ENV_NATIVE_CORE_TRUST_KEY = "WECHAT_TOOL_NATIVE_CORE_TRUST_KEY_PATH"
 _LEGACY_WCDB_ENVIRONMENT = (
@@ -140,6 +141,46 @@ class NativeCoreAsrRequestState(IntEnum):
     SUCCEEDED = 3
     FAILED = 4
     CANCELLED = 5
+
+
+class NativeCoreMomentsReason(IntEnum):
+    READY = 0
+    UNSUPPORTED_PLATFORM = 1
+    UNSUPPORTED_ARCHITECTURE = 2
+    RUNTIME_UNAVAILABLE = 3
+    WECHAT_NOT_RUNNING = 4
+    WECHAT_NOT_LOGGED_IN = 5
+    ACCOUNT_UNVERIFIED = 6
+    ACCOUNT_MISMATCH = 7
+    WECHAT_VERSION_UNVERIFIED = 8
+    HOOK_NOT_FOUND = 9
+    HOOK_VALIDATION_FAILED = 10
+    BUSY = 11
+    TARGET_NOT_FOUND = 12
+    ACCESS_DENIED = 13
+    DATABASE_WRITE_FAILED = 14
+    TIMEOUT = 15
+    CANCELLED = 16
+    INTERNAL = 17
+
+
+class NativeCoreMomentsRequestState(IntEnum):
+    PENDING = 1
+    RUNNING = 2
+    SUCCEEDED = 3
+    FAILED = 4
+    CANCELLED = 5
+    PAUSED = 6
+
+
+class NativeCoreMomentsCompletionReason(IntEnum):
+    NONE = 0
+    SOURCE_END = 1
+    EMPTY = 2
+    VISIBILITY_BOUNDARY = 3
+    ACCESS_DENIED = 4
+    CANCELLED = 5
+    INTERRUPTED = 6
 
 
 _NATIVE_CORE_OFFLINE_BOOTSTRAP_FEATURES = (
@@ -353,6 +394,70 @@ class _WceNativeAsrCloseOptions(ctypes.Structure):
     ]
 
 
+class _WceWechatMomentsSyncCapabilityOptions(ctypes.Structure):
+    _fields_ = [
+        ("struct_size", ctypes.c_uint32),
+        ("flags", ctypes.c_uint32),
+        ("account_utf8", ctypes.c_char_p),
+        ("account_directory_utf8", ctypes.c_char_p),
+        ("operation_nonce", ctypes.c_uint64),
+    ]
+
+
+class _WceWechatMomentsSyncCapability(ctypes.Structure):
+    _fields_ = [
+        ("struct_size", ctypes.c_uint32),
+        ("reason", ctypes.c_uint32),
+        ("platform_supported", ctypes.c_uint32),
+        ("ready", ctypes.c_uint32),
+        ("version_verified", ctypes.c_uint32),
+        ("wechat_process_id", ctypes.c_uint32),
+        ("actual_wechat_version", ctypes.c_char * 32),
+        ("adapter_id", ctypes.c_char * 64),
+    ]
+
+
+class _WceWechatMomentsSyncBeginOptions(ctypes.Structure):
+    _fields_ = [
+        ("struct_size", ctypes.c_uint32),
+        ("flags", ctypes.c_uint32),
+        ("account_utf8", ctypes.c_char_p),
+        ("account_directory_utf8", ctypes.c_char_p),
+        ("target_username_utf8", ctypes.c_char_p),
+        ("resume_cursor_utf8", ctypes.c_char_p),
+        ("operation_nonce", ctypes.c_uint64),
+        ("scene", ctypes.c_uint32),
+        ("page_size", ctypes.c_uint32),
+    ]
+
+
+class _WceWechatMomentsSyncRequestOptions(ctypes.Structure):
+    _fields_ = [
+        ("struct_size", ctypes.c_uint32),
+        ("reserved", ctypes.c_uint32),
+        ("request_handle", ctypes.c_uint64),
+        ("operation_nonce", ctypes.c_uint64),
+    ]
+
+
+class _WceWechatMomentsSyncPollResult(ctypes.Structure):
+    _fields_ = [
+        ("struct_size", ctypes.c_uint32),
+        ("state", ctypes.c_uint32),
+        ("reason", ctypes.c_uint32),
+        ("terminal_status", ctypes.c_int32),
+        ("completion_reason", ctypes.c_uint32),
+        ("source_complete", ctypes.c_uint32),
+        ("version_verified", ctypes.c_uint32),
+        ("has_more", ctypes.c_uint32),
+        ("pages_fetched", ctypes.c_uint64),
+        ("posts_observed", ctypes.c_uint64),
+        ("rows_written", ctypes.c_uint64),
+        ("oldest_tid", ctypes.c_uint64),
+        ("next_cursor", ctypes.c_char * (_NATIVE_MOMENTS_MAX_CURSOR_SIZE + 1)),
+    ]
+
+
 class _WceExportBeginOptions(ctypes.Structure):
     _fields_ = [
         ("struct_size", ctypes.c_uint32),
@@ -500,6 +605,33 @@ class NativeCoreAsrPollResult:
     server_id: int
     local_id: int
     text: str
+
+
+@dataclass(frozen=True)
+class NativeCoreMomentsCapability:
+    reason: NativeCoreMomentsReason
+    platform_supported: bool
+    ready: bool
+    version_verified: bool
+    wechat_process_id: int
+    actual_wechat_version: str
+    adapter_id: str
+
+
+@dataclass(frozen=True)
+class NativeCoreMomentsPollResult:
+    state: NativeCoreMomentsRequestState
+    reason: NativeCoreMomentsReason
+    terminal_status: NativeCoreStatus
+    completion_reason: NativeCoreMomentsCompletionReason
+    source_complete: bool
+    has_more: bool
+    version_verified: bool
+    pages_fetched: int
+    posts_observed: int
+    rows_written: int
+    oldest_tid: int
+    next_cursor: str
 
 
 @dataclass(frozen=True)
@@ -1739,18 +1871,27 @@ def _decode_native_asr_fixed_utf8(
     value: _WceNativeAsrStatus,
     field_name: str,
 ) -> str:
+    return _decode_native_fixed_utf8(value, field_name, 32, "native ASR")
+
+
+def _decode_native_fixed_utf8(
+    value: ctypes.Structure,
+    field_name: str,
+    field_size: int,
+    feature_name: str,
+) -> str:
     field = getattr(type(value), field_name)
-    raw = ctypes.string_at(ctypes.addressof(value) + field.offset, 32)
+    raw = ctypes.string_at(ctypes.addressof(value) + field.offset, field_size)
     terminator = raw.find(b"\0")
     if terminator < 0 or any(raw[terminator + 1 :]):
         raise NativeCoreProtocolError(
-            f"wechatdb native ASR returned an invalid {field_name}."
+            f"wechatdb {feature_name} returned an invalid {field_name}."
         )
     try:
         return raw[:terminator].decode("utf-8")
     except UnicodeDecodeError as exc:
         raise NativeCoreProtocolError(
-            f"wechatdb native ASR returned a non-UTF-8 {field_name}."
+            f"wechatdb {feature_name} returned a non-UTF-8 {field_name}."
         ) from exc
 
 
@@ -1828,6 +1969,7 @@ class NativeCoreClient:
         self._encrypted_export_handles: set[int] = set()
         self._decrypted_export_handles: set[int] = set()
         self._native_asr_handles: set[int] = set()
+        self._moments_sync_handles: set[int] = set()
         try:
             runtime_status = self.get_status()
             _verify_native_core_component_build_ids(
@@ -1876,6 +2018,10 @@ class NativeCoreClient:
     @property
     def supports_native_asr(self) -> bool:
         return self._supports_native_asr
+
+    @property
+    def supports_wechat_moments_sync(self) -> bool:
+        return self._supports_wechat_moments_sync
 
     def _configure_abi(self) -> None:
         lib = self._library
@@ -2019,6 +2165,27 @@ class NativeCoreClient:
         self._supports_native_asr = bool(available_native_asr_symbols) and (
             fused_native_asr_contract
         )
+        moments_sync_symbols = (
+            "wce_wechat_moments_sync_get_capability",
+            "wce_wechat_moments_sync_begin",
+            "wce_wechat_moments_sync_poll",
+            "wce_wechat_moments_sync_cancel",
+            "wce_wechat_moments_sync_close",
+        )
+        available_moments_sync_symbols = tuple(
+            name for name in moments_sync_symbols if hasattr(lib, name)
+        )
+        if available_moments_sync_symbols and len(available_moments_sync_symbols) != len(
+            moments_sync_symbols
+        ):
+            missing_moments_sync_symbols = (
+                name for name in moments_sync_symbols if name not in available_moments_sync_symbols
+            )
+            raise NativeCoreProtocolError(
+                "wechatdb native client has an incomplete Moments sync ABI: "
+                + ", ".join(missing_moments_sync_symbols)
+            )
+        self._supports_wechat_moments_sync = bool(available_moments_sync_symbols)
         self._supports_export_verification = hasattr(lib, "wce_export_verify_seal")
         if (
             self._build_manifest.root_public_key_compiled
@@ -2171,6 +2338,35 @@ class NativeCoreClient:
                 ctypes.POINTER(_WceNativeAsrCloseOptions),
             ]
             lib.wce_native_asr_close.restype = ctypes.c_int32
+        if self._supports_wechat_moments_sync:
+            lib.wce_wechat_moments_sync_get_capability.argtypes = [
+                ctypes.c_void_p,
+                ctypes.POINTER(_WceWechatMomentsSyncCapabilityOptions),
+                ctypes.POINTER(_WceWechatMomentsSyncCapability),
+            ]
+            lib.wce_wechat_moments_sync_get_capability.restype = ctypes.c_int32
+            lib.wce_wechat_moments_sync_begin.argtypes = [
+                ctypes.c_void_p,
+                ctypes.POINTER(_WceWechatMomentsSyncBeginOptions),
+                ctypes.POINTER(ctypes.c_uint64),
+            ]
+            lib.wce_wechat_moments_sync_begin.restype = ctypes.c_int32
+            lib.wce_wechat_moments_sync_poll.argtypes = [
+                ctypes.c_void_p,
+                ctypes.POINTER(_WceWechatMomentsSyncRequestOptions),
+                ctypes.POINTER(_WceWechatMomentsSyncPollResult),
+            ]
+            lib.wce_wechat_moments_sync_poll.restype = ctypes.c_int32
+            lib.wce_wechat_moments_sync_cancel.argtypes = [
+                ctypes.c_void_p,
+                ctypes.POINTER(_WceWechatMomentsSyncRequestOptions),
+            ]
+            lib.wce_wechat_moments_sync_cancel.restype = ctypes.c_int32
+            lib.wce_wechat_moments_sync_close.argtypes = [
+                ctypes.c_void_p,
+                ctypes.POINTER(_WceWechatMomentsSyncRequestOptions),
+            ]
+            lib.wce_wechat_moments_sync_close.restype = ctypes.c_int32
         if self._supports_export_verification:
             lib.wce_export_verify_seal.argtypes = [
                 ctypes.POINTER(_WceExportVerifyOptions),
@@ -2218,6 +2414,19 @@ class NativeCoreClient:
                 return
             handle = self._handle
             if handle.value:
+                for request_handle in tuple(self._moments_sync_handles):
+                    try:
+                        options = _WceWechatMomentsSyncRequestOptions(
+                            struct_size=ctypes.sizeof(_WceWechatMomentsSyncRequestOptions),
+                            reserved=0,
+                            request_handle=request_handle,
+                            operation_nonce=_operation_nonce(),
+                        )
+                        self._library.wce_wechat_moments_sync_close(
+                            handle, ctypes.byref(options)
+                        )
+                    except Exception:
+                        pass
                 for request_handle in tuple(self._native_asr_handles):
                     try:
                         options = _WceNativeAsrCloseOptions(
@@ -2280,6 +2489,7 @@ class NativeCoreClient:
             self._encrypted_export_handles.clear()
             self._decrypted_export_handles.clear()
             self._native_asr_handles.clear()
+            self._moments_sync_handles.clear()
             self._closed = True
             self._handle = ctypes.c_void_p()
             if handle.value:
@@ -2663,6 +2873,301 @@ class NativeCoreClient:
                 self._native_asr_handles.discard(handle_value)
                 return
             self._raise_for_status(rc, "close native ASR")
+
+    def get_wechat_moments_sync_capability(
+        self,
+        account: str,
+        account_directory: str | os.PathLike[str],
+        *,
+        allow_unverified_version: bool = True,
+    ) -> NativeCoreMomentsCapability:
+        if not self._supports_wechat_moments_sync:
+            return NativeCoreMomentsCapability(
+                reason=NativeCoreMomentsReason.RUNTIME_UNAVAILABLE,
+                platform_supported=sys.platform.startswith(("win", "darwin")),
+                ready=False,
+                version_verified=False,
+                wechat_process_id=0,
+                actual_wechat_version="",
+                adapter_id="",
+            )
+        options = _WceWechatMomentsSyncCapabilityOptions(
+            struct_size=ctypes.sizeof(_WceWechatMomentsSyncCapabilityOptions),
+            flags=1 if allow_unverified_version else 0,
+            account_utf8=_encode_native_asr_utf8(
+                account,
+                field_name="account",
+                maximum_size=_NATIVE_ASR_MAX_ACCOUNT_SIZE,
+            ),
+            account_directory_utf8=_encode_native_asr_account_directory(
+                account_directory
+            ),
+            operation_nonce=_operation_nonce(),
+        )
+        result = _WceWechatMomentsSyncCapability(
+            struct_size=ctypes.sizeof(_WceWechatMomentsSyncCapability)
+        )
+        with self._lock:
+            rc = int(
+                self._library.wce_wechat_moments_sync_get_capability(
+                    self._open_handle(), ctypes.byref(options), ctypes.byref(result)
+                )
+            )
+            self._raise_for_status(rc, "read WeChat Moments sync capability")
+        if int(result.struct_size) != ctypes.sizeof(_WceWechatMomentsSyncCapability):
+            raise NativeCoreProtocolError(
+                "wechatdb native Moments sync returned an invalid capability size."
+            )
+        if any(
+            int(value) not in {0, 1}
+            for value in (
+                result.platform_supported,
+                result.ready,
+                result.version_verified,
+            )
+        ):
+            raise NativeCoreProtocolError(
+                "wechatdb native Moments sync returned invalid capability flags."
+            )
+        try:
+            reason = NativeCoreMomentsReason(int(result.reason))
+        except ValueError as exc:
+            raise NativeCoreProtocolError(
+                "wechatdb native Moments sync returned an invalid capability reason."
+            ) from exc
+        ready = bool(result.ready)
+        platform_supported = bool(result.platform_supported)
+        if (
+            ready
+            and (
+                reason is not NativeCoreMomentsReason.READY
+                or not platform_supported
+                or int(result.wechat_process_id) <= 0
+            )
+        ) or (not ready and reason is NativeCoreMomentsReason.READY):
+            raise NativeCoreProtocolError(
+                "wechatdb native Moments sync returned inconsistent capability metadata."
+            )
+
+        return NativeCoreMomentsCapability(
+            reason=reason,
+            platform_supported=platform_supported,
+            ready=ready,
+            version_verified=bool(result.version_verified),
+            wechat_process_id=int(result.wechat_process_id),
+            actual_wechat_version=_decode_native_fixed_utf8(
+                result, "actual_wechat_version", 32, "native Moments sync"
+            ),
+            adapter_id=_decode_native_fixed_utf8(
+                result, "adapter_id", 64, "native Moments sync"
+            ),
+        )
+
+    def begin_wechat_moments_sync(
+        self,
+        account: str,
+        account_directory: str | os.PathLike[str],
+        target_username: str,
+        *,
+        resume_cursor: str = "",
+        resume: bool = True,
+        allow_unverified_version: bool = True,
+        scene: int = 1,
+        page_size: int = 0,
+    ) -> int:
+        if not self._supports_wechat_moments_sync:
+            raise NativeCoreProtocolError(
+                "wechatdb native client does not implement the asynchronous Moments sync ABI."
+            )
+        scene_value = int(scene)
+        page_size_value = int(page_size)
+        if not 1 <= scene_value <= 0xFFFF_FFFF:
+            raise ValueError("scene must be between 1 and 4294967295")
+        if not 0 <= page_size_value <= 0xFFFF_FFFF:
+            raise ValueError("page_size must be between 0 and 4294967295")
+        encoded_resume_cursor = (
+            None
+            if resume_cursor == ""
+            else _encode_native_asr_utf8(
+                resume_cursor,
+                field_name="resume_cursor",
+                maximum_size=_NATIVE_MOMENTS_MAX_CURSOR_SIZE,
+            )
+        )
+        flags = (1 if resume else 0) | (2 if allow_unverified_version else 0)
+        options = _WceWechatMomentsSyncBeginOptions(
+            struct_size=ctypes.sizeof(_WceWechatMomentsSyncBeginOptions),
+            flags=flags,
+            account_utf8=_encode_native_asr_utf8(
+                account,
+                field_name="account",
+                maximum_size=_NATIVE_ASR_MAX_ACCOUNT_SIZE,
+            ),
+            account_directory_utf8=_encode_native_asr_account_directory(
+                account_directory
+            ),
+            target_username_utf8=_encode_native_asr_utf8(
+                target_username,
+                field_name="target_username",
+                maximum_size=_NATIVE_ASR_MAX_ACCOUNT_SIZE,
+            ),
+            resume_cursor_utf8=encoded_resume_cursor,
+            operation_nonce=_operation_nonce(),
+            scene=scene_value,
+            page_size=page_size_value,
+        )
+        request_handle = ctypes.c_uint64()
+        with self._lock:
+            rc = int(
+                self._library.wce_wechat_moments_sync_begin(
+                    self._open_handle(), ctypes.byref(options), ctypes.byref(request_handle)
+                )
+            )
+            self._raise_for_status(rc, "begin WeChat Moments sync")
+            handle_value = int(request_handle.value)
+            if handle_value <= 0:
+                raise NativeCoreProtocolError(
+                    "wechatdb native Moments sync returned an empty request handle."
+                )
+            self._moments_sync_handles.add(handle_value)
+        return handle_value
+
+    def _wechat_moments_request_options(
+        self, request_handle: int
+    ) -> _WceWechatMomentsSyncRequestOptions:
+        handle_value = int(request_handle)
+        if not 1 <= handle_value <= 0xFFFF_FFFF_FFFF_FFFF:
+            raise ValueError("request_handle must be between 1 and 18446744073709551615")
+        return _WceWechatMomentsSyncRequestOptions(
+            struct_size=ctypes.sizeof(_WceWechatMomentsSyncRequestOptions),
+            reserved=0,
+            request_handle=handle_value,
+            operation_nonce=_operation_nonce(),
+        )
+
+    def poll_wechat_moments_sync(
+        self, request_handle: int
+    ) -> NativeCoreMomentsPollResult:
+        if not self._supports_wechat_moments_sync:
+            raise NativeCoreProtocolError(
+                "wechatdb native client does not implement the asynchronous Moments sync ABI."
+            )
+        options = self._wechat_moments_request_options(request_handle)
+        result = _WceWechatMomentsSyncPollResult(
+            struct_size=ctypes.sizeof(_WceWechatMomentsSyncPollResult)
+        )
+        with self._lock:
+            if int(request_handle) not in self._moments_sync_handles:
+                raise NativeCoreUnavailableError(
+                    "wechatdb native Moments sync handle is closed."
+                )
+            rc = int(
+                self._library.wce_wechat_moments_sync_poll(
+                    self._open_handle(), ctypes.byref(options), ctypes.byref(result)
+                )
+            )
+            self._raise_for_status(rc, "poll WeChat Moments sync")
+        if int(result.struct_size) != ctypes.sizeof(_WceWechatMomentsSyncPollResult):
+            raise NativeCoreProtocolError(
+                "wechatdb native Moments sync returned an invalid poll result size."
+            )
+        if any(
+            int(value) not in {0, 1}
+            for value in (
+                result.source_complete,
+                result.version_verified,
+                result.has_more,
+            )
+        ):
+            raise NativeCoreProtocolError(
+                "wechatdb native Moments sync returned invalid poll flags."
+            )
+        try:
+            state = NativeCoreMomentsRequestState(int(result.state))
+            reason = NativeCoreMomentsReason(int(result.reason))
+            terminal_status = NativeCoreStatus(int(result.terminal_status))
+            completion_reason = NativeCoreMomentsCompletionReason(
+                int(result.completion_reason)
+            )
+        except ValueError as exc:
+            raise NativeCoreProtocolError(
+                "wechatdb native Moments sync returned an invalid poll result."
+            ) from exc
+        next_cursor = _decode_native_fixed_utf8(
+            result,
+            "next_cursor",
+            _NATIVE_MOMENTS_MAX_CURSOR_SIZE + 1,
+            "native Moments sync",
+        )
+        if state == NativeCoreMomentsRequestState.SUCCEEDED and not bool(
+            result.source_complete
+        ):
+            raise NativeCoreProtocolError(
+                "wechatdb native Moments sync succeeded without a source-end marker."
+            )
+        if (
+            state == NativeCoreMomentsRequestState.SUCCEEDED
+            and terminal_status is not NativeCoreStatus.OK
+        ) or (
+            bool(result.source_complete)
+            and completion_reason is NativeCoreMomentsCompletionReason.NONE
+        ):
+            raise NativeCoreProtocolError(
+                "wechatdb native Moments sync returned inconsistent completion metadata."
+            )
+        if bool(result.source_complete) and bool(result.has_more):
+            raise NativeCoreProtocolError(
+                "wechatdb native Moments sync returned conflicting source-end flags."
+            )
+        if bool(result.has_more) and not next_cursor:
+            raise NativeCoreProtocolError(
+                "wechatdb native Moments sync returned has-more without a next cursor."
+            )
+        return NativeCoreMomentsPollResult(
+            state=state,
+            reason=reason,
+            terminal_status=terminal_status,
+            completion_reason=completion_reason,
+            source_complete=bool(result.source_complete),
+            has_more=bool(result.has_more),
+            version_verified=bool(result.version_verified),
+            pages_fetched=int(result.pages_fetched),
+            posts_observed=int(result.posts_observed),
+            rows_written=int(result.rows_written),
+            oldest_tid=int(result.oldest_tid),
+            next_cursor=next_cursor,
+        )
+
+    def cancel_wechat_moments_sync(self, request_handle: int) -> None:
+        if not self._supports_wechat_moments_sync:
+            return
+        options = self._wechat_moments_request_options(request_handle)
+        with self._lock:
+            if int(request_handle) not in self._moments_sync_handles:
+                return
+            rc = int(
+                self._library.wce_wechat_moments_sync_cancel(
+                    self._open_handle(), ctypes.byref(options)
+                )
+            )
+            if rc not in {int(NativeCoreStatus.OK), int(NativeCoreStatus.NOT_FOUND)}:
+                self._raise_for_status(rc, "cancel WeChat Moments sync")
+
+    def close_wechat_moments_sync(self, request_handle: int) -> None:
+        if not self._supports_wechat_moments_sync:
+            return
+        options = self._wechat_moments_request_options(request_handle)
+        with self._lock:
+            if int(request_handle) not in self._moments_sync_handles:
+                return
+            rc = int(
+                self._library.wce_wechat_moments_sync_close(
+                    self._open_handle(), ctypes.byref(options)
+                )
+            )
+            if rc not in {int(NativeCoreStatus.OK), int(NativeCoreStatus.NOT_FOUND)}:
+                self._raise_for_status(rc, "close WeChat Moments sync")
+            self._moments_sync_handles.discard(int(request_handle))
 
     def open_database(
         self,

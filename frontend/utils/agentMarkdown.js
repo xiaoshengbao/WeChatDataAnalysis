@@ -1,10 +1,27 @@
 import MarkdownIt from 'markdown-it'
+import { artifactText } from './analysisUi'
 
 // 在 Markdown 文本节点中解析来源，避免把代码块或代码示例误变成按钮。
 const md = new MarkdownIt({ html: false, linkify: false, breaks: true })
 md.renderer.rules.image = () => '[图片]'
 md.renderer.rules.link_open = () => '<span>'
 md.renderer.rules.link_close = () => '</span>'
+// Only standalone blocks become UI; fenced/inline code remains literal text.
+md.block.ruler.before('paragraph', 'analysis_ui', (state, start, end, silent) => {
+  if (state.sCount[start] - state.blkIndent >= 4) return false
+  const line = state.src.slice(state.bMarks[start] + state.tShift[start], state.eMarks[start]).trim()
+  const match = line.match(/^\[\[ui:([a-f0-9]{24})\]\]$/i)
+  const unfinished = start + 1 === end && /^\[\[u(?:i(?::[a-f0-9]{0,24}\]?)?)?$/i.test(line)
+  if (!match && !unfinished) return false
+  if (!silent) {
+    const token = state.push('analysis_ui', '', 0)
+    token.meta = { id: match?.[1].toLowerCase() || '' }
+    token.map = [start, start + 1]
+    state.line = start + 1
+  }
+  return true
+}, { alt: ['paragraph', 'reference', 'blockquote'] })
+md.renderer.rules.analysis_ui = token => ''
 const citation = /\[\[(?:(person|image|source):)?([a-f0-9]{24})\]\]|\(\s*source\s*:\s*([a-f0-9]{24})\s*\)|（\s*source\s*[:：]\s*([a-f0-9]{24})\s*）|\[source\s*:\s*([a-f0-9]{24})\]/gi
 const groupedCitation = /\[\[\s*(?:source\s*:\s*)?[a-f0-9]{24}\s*(?:\]\s*[,，]\s*\[\s*(?:source\s*:\s*)?[a-f0-9]{24}\s*)+\]\]/gi
 const unfinished = /(?:\[\[(?:(?:p|pe|per|pers|perso|person|i|im|ima|imag|image|s|so|sou|sour|sourc|source):?)?[a-f0-9]{0,24}\]?|[（(]\s*(?:s|so|sou|sour|sourc|source)(?:\s*[:：]\s*[a-f0-9]{0,24})?)$/i
@@ -66,8 +83,31 @@ export function referenceUrl(path, apiBase = '/api') {
 export function renderAgentMarkdown(text, citations = [], streaming = false, references = [], apiBase = '/api') {
   return md.render(text || '', { citations, streaming, references, apiBase, ids: [] })
 }
-export function copyAgentText(text, citations = [], references = []) {
+export function renderAgentBlocks(text, citations = [], streaming = false, references = [], apiBase = '/api') {
+  const env = { citations, streaming, references, apiBase, ids: [] }
+  const tokens = md.parse(text || '', env), blocks = []
+  let current = [], index = 0
+  const flush = () => {
+    if (current.length) blocks.push({ kind: 'text', key: `text:${index++}`, html: md.renderer.render(current, md.options, env) })
+    current = []
+  }
+  for (const token of tokens) {
+    if (token.type === 'analysis_ui') {
+      flush()
+      if (token.meta.id) blocks.push({ kind: 'ui', id: token.meta.id, key: `ui:${token.meta.id}:${index++}` })
+    } else current.push(token)
+  }
+  flush()
+  return blocks.length ? blocks : [{ kind: 'text', key: 'text:0', html: '' }]
+}
+export function copyAgentText(text, citations = [], references = [], uiArtifacts = []) {
   let content = normalizeGroupedCitations(text || '', citations)
+  const uiTokens = md.parse(content, { citations, references, ids: [], apiBase: '/api' }).filter(t => t.type === 'analysis_ui')
+  const lines = content.split('\n')
+  for (const token of uiTokens.reverse()) {
+    lines.splice(token.map[0], token.map[1] - token.map[0], token.meta.id ? artifactText(uiArtifacts.find(a => a.id === token.meta.id)) : '')
+  }
+  content = lines.join('\n')
   // 仅清理普通 Markdown 正文末尾，代码块里的字面协议示例保持原样。
   const last = md.parse(content, { citations: [], references: [], ids: [] }).filter(token => token.nesting !== -1).at(-1)
   if (last?.type === 'inline') content = content.replace(unfinished, '')

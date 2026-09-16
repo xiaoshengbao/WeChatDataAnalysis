@@ -382,11 +382,15 @@ def _clone_real_wechat_container(debug_root: Path) -> Path:
 
 def _materialize_private_xwechat_files(source_documents: Path, cloned_documents: Path) -> None:
     destination = cloned_documents / "xwechat_files"
+    active_candidate = source_documents / "xwechat_files"
     local_candidate = source_documents / "app_data/xwechat_files"
-    source: Path | None = (
-        local_candidate
-        if local_candidate.is_dir() and not local_candidate.is_symlink()
-        else None
+    source: Path | None = next(
+        (
+            candidate
+            for candidate in (active_candidate, local_candidate)
+            if candidate.is_dir() and not candidate.is_symlink()
+        ),
+        None,
     )
     if source is None:
         local_backups = sorted(
@@ -453,6 +457,7 @@ def build_lldb_salt_capture_script(
     account_probe_pages: dict[str, bytes] | None = None,
     transaction_id: str | None = None,
     pbkdf_stub_plan: dict[str, int] | None = None,
+    ready_file: Path | None = None,
 ) -> str:
     """Build callbacks that validate candidates before stopping the process."""
 
@@ -461,6 +466,8 @@ def build_lldb_salt_capture_script(
     if not salts:
         raise MacOSDBKeyCaptureFailure("capture_salts_missing", "没有可用于过滤 PBKDF2 调用的数据库 salt")
     result_literal = json.dumps(str(result_path))
+    if ready_path is None and ready_file is not None:
+        ready_path = ready_file.expanduser()
     ready_literal = json.dumps(str(ready_path) if ready_path is not None else "")
     salts_literal = json.dumps(salts)
     hmac_salts_literal = json.dumps(
@@ -760,18 +767,20 @@ def _setup(debugger, _command, _result, _internal_dict):
             key_breakpoint.SetScriptCallbackFunction(f"{{MODULE_NAME}}._key_return_callback")
             key_breakpoint.SetAutoContinue(True)
             key_locations += _resolved_locations(key_breakpoint, target)
-    print("WEDATA_KEY_MONITOR_READY", pbkdf_locations, key_locations, flush=True)
     if pbkdf_locations <= 0 and key_locations <= 0:
         process = target.GetProcess()
         process.Detach()
         os._exit(24)
-    _write_ready({{
+    if not _write_ready({{
         "status": "ready",
         "method": "macos_lldb_stub",
         "pid": int(target.GetProcess().GetProcessID() or 0),
         "pbkdf_locations": int(pbkdf_locations),
         "key_return_locations": int(key_locations),
-    }})
+    }}):
+        target.GetProcess().Detach()
+        os._exit(25)
+    print("WEDATA_KEY_MONITOR_READY", pbkdf_locations, key_locations, flush=True)
 
 def __lldb_init_module(debugger, _internal_dict):
     debugger.HandleCommand(f"command script add -f {{MODULE_NAME}}._setup wedata_capture")

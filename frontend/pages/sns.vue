@@ -40,6 +40,53 @@
         />
         <div v-if="syncWarning" class="mt-2 text-xs leading-5 text-amber-700">{{ syncWarning }}</div>
 
+        <div v-if="selectedSnsUser" class="mt-3 rounded-md border border-[#576b95]/20 bg-white p-2.5">
+          <button
+              type="button"
+              class="w-full rounded-md bg-[#576b95] px-3 py-2 text-sm text-white transition-colors hover:bg-[#4b5f86] disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="isSnsRemoteSyncStarting || (isSnsRemoteSyncActive && !selectedRemoteJobMatches)"
+              @click="startSelectedSnsRemoteSync"
+          >
+            {{ snsRemoteSyncButtonLabel }}
+          </button>
+          <div v-if="snsRemoteRiskPending" class="mt-2 rounded bg-amber-50 p-2 text-[11px] leading-5 text-amber-800">
+            该能力通过非官方 Hook 调用后台微信，可能随微信升级失效，并存在账号限制风险；只能获取当前账号可见内容。
+            <div class="mt-1 flex justify-end gap-3">
+              <button type="button" class="text-gray-500" @click="snsRemoteRiskPending = false">取消</button>
+              <button type="button" class="font-medium text-amber-900" @click="acceptRiskAndStartSnsRemoteSync">我已了解，继续</button>
+            </div>
+          </div>
+          <div v-if="snsRemoteSyncJob && selectedRemoteJobMatches" class="mt-2 text-[11px] leading-5 text-gray-500">
+            <div>{{ snsRemoteSyncStatusText }}</div>
+            <div v-if="snsRemoteSyncJob.mode === 'local_snapshot' || snsRemoteSyncCapability?.mode === 'local_snapshot'" class="text-gray-500">
+              当前微信版本未启用原生 Hook，任务使用本地快照后台归档
+            </div>
+            <div v-if="snsRemoteSyncJob.wechatVersion && !snsRemoteSyncJob.versionVerified" class="text-amber-700">
+              微信 {{ snsRemoteSyncJob.wechatVersion }} 未经验证，正在实验兼容模式运行
+            </div>
+            <div class="mt-1 flex gap-3">
+              <button
+                  v-if="isSnsRemoteSyncActive"
+                  type="button"
+                  class="text-gray-600 hover:text-gray-900 disabled:opacity-50"
+                  :disabled="isSnsRemoteSyncCancelling"
+                  @click="cancelSelectedSnsRemoteSync"
+              >
+                {{ isSnsRemoteSyncCancelling ? '取消中…' : '取消任务' }}
+              </button>
+              <button
+                  v-if="snsRemoteSyncJob.status === 'done_with_warnings' && Number(snsRemoteSyncJob.missingMediaCount || 0) > 0"
+                  type="button"
+                  class="text-[#576b95] hover:text-[#33466d] disabled:opacity-50"
+                  :disabled="isSnsRemoteSyncRetrying"
+                  @click="retrySelectedSnsRemoteMedia"
+              >
+                {{ isSnsRemoteSyncRetrying ? '重试中…' : '重试缺失媒体' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div class="mt-3">
           <button
               type="button"
@@ -1177,7 +1224,7 @@ const isSnsFullSyncActive = computed(() => {
 })
 const snsFullSyncButtonLabel = computed(() => {
   if (isRefreshing.value) return '启动中…'
-  return isSnsFullSyncActive.value ? '同步中' : '刷新'
+  return isSnsFullSyncActive.value ? '同步中' : '同步已有缓存'
 })
 const snsFullSyncStatusText = computed(() => {
   const job = snsFullSyncJob.value
@@ -1196,6 +1243,41 @@ const snsFullSyncStatusText = computed(() => {
 const isSnsPageMounted = ref(false)
 const error = ref('')
 const syncWarning = ref('')
+const snsRemoteSyncJob = ref(null)
+const snsRemoteSyncCapability = ref(null)
+const isSnsRemoteSyncStarting = ref(false)
+const isSnsRemoteSyncCancelling = ref(false)
+const isSnsRemoteSyncRetrying = ref(false)
+const snsRemoteRiskPending = ref(false)
+const SNS_REMOTE_SYNC_RISK_ACCEPTED_KEY = 'wechat_sns_remote_sync_risk_accepted_v1'
+const isSnsRemoteSyncActive = computed(() => {
+  const status = String(snsRemoteSyncJob.value?.status || '')
+  return status === 'queued' || status === 'running' || status === 'paused'
+})
+const selectedRemoteJobMatches = computed(() => {
+  return String(snsRemoteSyncJob.value?.targetUsername || '') === String(selectedSnsUser.value || '')
+})
+const snsRemoteSyncButtonLabel = computed(() => {
+  if (isSnsRemoteSyncStarting.value) return '启动中…'
+  if (isSnsRemoteSyncActive.value && selectedRemoteJobMatches.value) return '后台获取中'
+  return '获取完整朋友圈'
+})
+const snsRemoteSyncStatusText = computed(() => {
+  const job = snsRemoteSyncJob.value
+  if (!job) return ''
+  const status = String(job.status || '')
+  const phase = String(job.phase || '')
+  const progress = job.progress || {}
+  if (status === 'paused') return String(job.error?.message || '任务已暂停，条件恢复后会自动继续')
+  if (status === 'done') return '已到达当前账号可见范围末尾，媒体归档完成'
+  if (status === 'done_with_warnings') return `可见内容同步完成，${Number(progress.mediaMissing || 0)} 个媒体文件缺失`
+  if (status === 'cancelled') return '任务已取消，已获取内容仍会保留'
+  if (status === 'error') return String(job.error?.message || '朋友圈后台同步失败')
+  if (phase === 'fetching') return `正在后台获取：${Number(progress.pagesFetched || 0)} 页，发现 ${Number(progress.postsObserved || 0)} 条`
+  if (phase === 'importing') return `正在写入本地快照：${Number(progress.rowsImported || 0)} 条`
+  if (phase === 'archiving_media') return `正在归档媒体：${Number(progress.mediaArchived || 0)}/${Number(progress.mediaTotal || 0)}`
+  return '正在检查后台微信…'
+})
 const snsUseCache = ref(true)
 const publishUnavailableDialogOpen = ref(false)
 
@@ -1255,7 +1337,7 @@ const shouldHideSnsUser = (item) => {
   const displayName = String(item?.displayName || '').trim()
   const postCount = Number(item?.postCount || 0)
   if (!username) return true
-  if (!Number.isFinite(postCount) || postCount <= 0) return true
+  if ((!Number.isFinite(postCount) || postCount <= 0) && !item?.canRemoteSync) return true
   return /^v3_/i.test(username) && /@stranger$/i.test(username) && (!displayName || displayName === username)
 }
 
@@ -2321,8 +2403,41 @@ const loadSnsUsers = async ({ preserveExisting = false } = {}) => {
   }
 
   try {
-    const resp = await api.listSnsUsers({ account: acc, limit: 5000 })
-    const nextItems = Array.isArray(resp?.items) ? resp.items : []
+    const [snsResult, contactsResult] = await Promise.allSettled([
+      api.listSnsUsers({ account: acc, limit: 5000 }),
+      api.listChatContacts({
+        account: acc,
+        source: 'auto',
+        include_friends: true,
+        include_groups: false,
+        include_officials: false,
+        include_former_friends: false,
+        include_blocked: false
+      })
+    ])
+    if (contactsResult.status !== 'fulfilled') throw contactsResult.reason
+    const snsResp = snsResult.status === 'fulfilled' ? snsResult.value : { items: [] }
+    const contactsResp = contactsResult.value
+    const momentItems = Array.isArray(snsResp?.items) ? snsResp.items : []
+    const momentByUsername = new Map(
+      momentItems.map((item) => [String(item?.username || '').trim(), item])
+    )
+    const nextItems = []
+    for (const contact of Array.isArray(contactsResp?.contacts) ? contactsResp.contacts : []) {
+      const username = String(contact?.username || '').trim()
+      if (!username || String(contact?.type || '') !== 'friend') continue
+      const cached = momentByUsername.get(username)
+      momentByUsername.delete(username)
+      nextItems.push({
+        ...contact,
+        ...(cached || {}),
+        username,
+        displayName: String(cached?.displayName || contact?.displayName || username),
+        postCount: Number(cached?.postCount || 0),
+        canRemoteSync: true
+      })
+    }
+    for (const item of momentByUsername.values()) nextItems.push(item)
     if (!preserveExisting || snsUsers.value.length === 0) {
       snsUsers.value = nextItems
       return
@@ -3609,6 +3724,121 @@ const cancelSnsFullSync = async () => {
 
 let postsRequestGeneration = 0
 
+const hasAcceptedSnsRemoteRisk = () => {
+  if (!process.client) return false
+  try {
+    return window.localStorage.getItem(SNS_REMOTE_SYNC_RISK_ACCEPTED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+const applySnsRemoteSyncJob = (job) => {
+  snsRemoteSyncJob.value = job || null
+  const status = String(job?.status || '')
+  if (status !== 'queued' && status !== 'running' && status !== 'paused') {
+    isSnsRemoteSyncCancelling.value = false
+  }
+}
+
+const runSelectedSnsRemoteSync = async () => {
+  const account = String(selectedAccount.value || '').trim()
+  const targetUsername = String(selectedSnsUser.value || '').trim()
+  if (!account || !targetUsername || isSnsRemoteSyncStarting.value) return
+  isSnsRemoteSyncStarting.value = true
+  syncWarning.value = ''
+  try {
+    const capabilityResponse = await api.getSnsRemoteSyncCapability({ account })
+    if (
+      account !== String(selectedAccount.value || '').trim()
+      || targetUsername !== String(selectedSnsUser.value || '').trim()
+    ) return
+    const capability = capabilityResponse?.capability || null
+    snsRemoteSyncCapability.value = capability
+    if (!capability?.supported) {
+      syncWarning.value = String(capability?.message || '当前安装包未包含朋友圈 Hook 同步运行时')
+      return
+    }
+    if (!capability?.ready && !capability?.retryable) {
+      syncWarning.value = String(capability?.message || '当前微信版本不支持朋友圈后台同步')
+      return
+    }
+    const response = await api.startSnsRemoteSync({ account, target_username: targetUsername })
+    applySnsRemoteSyncJob(response?.job || null)
+  } catch (e) {
+    syncWarning.value = String(
+      e?.data?.detail
+      || e?.detail
+      || e?.message
+      || '启动朋友圈后台同步失败'
+    )
+  } finally {
+    isSnsRemoteSyncStarting.value = false
+  }
+}
+
+const startSelectedSnsRemoteSync = async () => {
+  if (isSnsRemoteSyncActive.value && selectedRemoteJobMatches.value) return
+  if (!hasAcceptedSnsRemoteRisk()) {
+    snsRemoteRiskPending.value = true
+    return
+  }
+  await runSelectedSnsRemoteSync()
+}
+
+const acceptRiskAndStartSnsRemoteSync = async () => {
+  if (process.client) {
+    try {
+      window.localStorage.setItem(SNS_REMOTE_SYNC_RISK_ACCEPTED_KEY, '1')
+    } catch {}
+  }
+  snsRemoteRiskPending.value = false
+  await runSelectedSnsRemoteSync()
+}
+
+const cancelSelectedSnsRemoteSync = async () => {
+  const account = String(selectedAccount.value || '').trim()
+  const syncId = String(snsRemoteSyncJob.value?.syncId || '').trim()
+  if (!account || !syncId || isSnsRemoteSyncCancelling.value) return
+  isSnsRemoteSyncCancelling.value = true
+  try {
+    const response = await api.cancelSnsRemoteSync(syncId, { account })
+    applySnsRemoteSyncJob(response?.job || snsRemoteSyncJob.value)
+  } catch (e) {
+    syncWarning.value = String(e?.data?.detail || e?.message || '取消朋友圈后台同步失败')
+  } finally {
+    isSnsRemoteSyncCancelling.value = false
+  }
+}
+
+const retrySelectedSnsRemoteMedia = async () => {
+  const account = String(selectedAccount.value || '').trim()
+  const syncId = String(snsRemoteSyncJob.value?.syncId || '').trim()
+  if (!account || !syncId || isSnsRemoteSyncRetrying.value) return
+  isSnsRemoteSyncRetrying.value = true
+  try {
+    const response = await api.retrySnsRemoteSyncMedia(syncId, { account })
+    applySnsRemoteSyncJob(response?.job || snsRemoteSyncJob.value)
+  } catch (e) {
+    syncWarning.value = String(e?.data?.detail || e?.message || '重试朋友圈媒体失败')
+  } finally {
+    isSnsRemoteSyncRetrying.value = false
+  }
+}
+
+const restoreSnsRemoteSyncStatus = async (account) => {
+  const requestedAccount = String(account || '').trim()
+  if (!requestedAccount) return null
+  try {
+    const response = await api.getLatestSnsRemoteSync({ account: requestedAccount })
+    if (requestedAccount !== String(selectedAccount.value || '').trim()) return null
+    applySnsRemoteSyncJob(response?.job || null)
+    return response?.job || null
+  } catch {
+    return null
+  }
+}
+
 const isCurrentPostsRequest = (generation, account) => {
   return generation === postsRequestGeneration
     && account === String(selectedAccount.value || '').trim()
@@ -3702,7 +3932,18 @@ const loadPosts = async ({ reset }) => {
     return true
   } catch (e) {
     if (isCurrentPostsRequest(generation, account)) {
-      error.value = e?.message || '加载朋友圈失败'
+      const detail = String(e?.data?.detail || e?.detail || e?.message || '')
+      const status = Number(e?.statusCode || e?.status || e?.response?.status || 0)
+      if (status === 404 && /sns\.db not found/i.test(detail)) {
+        posts.value = []
+        coverData.value = null
+        covers.value = []
+        hasMore.value = false
+        cachePagingExhausted.value = true
+        error.value = ''
+        return true
+      }
+      error.value = detail || '加载朋友圈失败'
     }
     return false
   } finally {
@@ -4231,7 +4472,10 @@ const onSnsRealtimeReady = async (event) => {
 
   snsEventReconnectAttempt = 0
   snsLastEventSequence = Math.max(snsLastEventSequence, Number(payload?.sequence || 0))
-  await restoreSnsFullSyncStatus(account)
+  await Promise.all([
+    restoreSnsFullSyncStatus(account),
+    restoreSnsRemoteSyncStatus(account)
+  ])
   if (payload?.watcherAvailable === false) {
     syncWarning.value = String(payload?.message || '系统文件通知不可用，请使用手动刷新')
     return
@@ -4297,6 +4541,34 @@ const onSnsFullSyncEvent = (event) => {
   }
 }
 
+const onSnsRemoteSyncEvent = (event) => {
+  const payload = parseSnsRealtimeEvent(event)
+  const account = String(selectedAccount.value || '').trim()
+  if (!payload?.job || String(payload?.account || '') !== account) return
+  const sequence = Number(payload?.sequence || 0)
+  if (sequence > 0 && sequence <= snsLastEventSequence) return
+  snsLastEventSequence = Math.max(snsLastEventSequence, sequence)
+
+  const previousVersion = String(snsRemoteSyncJob.value?.snapshotVersion || '')
+  const job = payload.job
+  applySnsRemoteSyncJob(job)
+  const snapshotVersion = String(job?.snapshotVersion || payload?.snapshotVersion || '').trim()
+  const targetMatches = String(job?.targetUsername || '') === String(selectedSnsUser.value || '')
+  if (targetMatches && snapshotVersion && snapshotVersion !== previousVersion) {
+    void Promise.all([
+      loadSnsUsers({ preserveExisting: true }),
+      mergeLatestPosts()
+    ])
+  }
+  const status = String(job?.status || '')
+  if (targetMatches && (status === 'done' || status === 'done_with_warnings')) {
+    void Promise.all([
+      loadSnsUsers({ preserveExisting: true }),
+      loadPosts({ reset: true })
+    ])
+  }
+}
+
 function connectSnsEventStream() {
   if (!process.client || snsPageUnmounted || document.visibilityState !== 'visible') return
   const account = String(selectedAccount.value || '').trim()
@@ -4319,6 +4591,12 @@ function connectSnsEventStream() {
   source.addEventListener('full_sync_done', onSnsFullSyncEvent)
   source.addEventListener('full_sync_error', onSnsFullSyncEvent)
   source.addEventListener('full_sync_cancelled', onSnsFullSyncEvent)
+  source.addEventListener('remote_sync_progress', onSnsRemoteSyncEvent)
+  source.addEventListener('remote_sync_done', onSnsRemoteSyncEvent)
+  source.addEventListener('remote_sync_warning', onSnsRemoteSyncEvent)
+  source.addEventListener('remote_sync_error', onSnsRemoteSyncEvent)
+  source.addEventListener('remote_sync_cancelled', onSnsRemoteSyncEvent)
+  source.addEventListener('remote_sync_paused', onSnsRemoteSyncEvent)
   source.onerror = () => {
     if (source !== snsEventSource) return
     closeSnsEventStream()
@@ -4340,6 +4618,11 @@ watch(
         snsQueuedRealtimeEvent = null
         snsQueuedFullSyncMerge = null
         snsFullSyncJob.value = null
+        snsRemoteSyncJob.value = null
+        snsRemoteSyncCapability.value = null
+        snsRemoteRiskPending.value = false
+        isSnsRemoteSyncCancelling.value = false
+        isSnsRemoteSyncRetrying.value = false
         isSnsFullSyncCancelling.value = false
         snsFullSyncLastUserRefreshBatch = 0
         snsSnapshotVersion = ''
@@ -4367,6 +4650,7 @@ watch(
         if (previewCtx.value) closeImagePreview()
         await loadLocalSnsData()
         await restoreSnsFullSyncStatus(String(v || ''))
+        await restoreSnsRemoteSyncStatus(String(v || ''))
         // 首屏就绪后建立事件连接；后端启动同步或重连差异由 ready 事件补齐。
         connectSnsEventStream()
       }
@@ -4443,7 +4727,10 @@ const runPassiveSnsRefresh = async () => {
   if (!String(selectedAccount.value || '').trim()) return
   // 窗口重新可见时只核对一次本地版本，然后恢复 SSE。
   await reconcileSnsSnapshotOnce()
-  await restoreSnsFullSyncStatus(String(selectedAccount.value || ''))
+  await Promise.all([
+    restoreSnsFullSyncStatus(String(selectedAccount.value || '')),
+    restoreSnsRemoteSyncStatus(String(selectedAccount.value || ''))
+  ])
   connectSnsEventStream()
 }
 

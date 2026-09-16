@@ -100,12 +100,13 @@ class Workspace:
         return {'items': [dict(json.loads(r[1]), id=r[0]) for r in rows], 'total': total,
                 'offset': offset, 'has_more': offset+len(rows)<total}
 
-    def statistics(self, run_id, offset=0, limit=20):
+    def statistics(self, run_id, offset=0, limit=20, *, scope_handle=None):
         record = self.store.get('agent_run', run_id) or {}
         zone = f"{int(record['timezone_offset']):+d} seconds" if 'timezone_offset' in record else 'localtime'
         where, args = 'run_id=?', [run_id]
-        if record.get('engine_version') == 3 and record.get('statistics_scope'):
-            scope = self.get(run_id, record['version'], 'scope:' + record['statistics_scope'])
+        selected_scope = scope_handle or record.get('statistics_scope')
+        if record.get('engine_version') == 3 and selected_scope:
+            scope = self.get(run_id, record['version'], 'scope:' + selected_scope)
             if not scope:
                 raise ValueError('统计范围已失效')
             where += ' AND username IN (' + ','.join('?' for _ in scope['conversations']) + ') AND time>=? AND time<?'
@@ -115,11 +116,12 @@ class Workspace:
                 args.append(scope['sender'])
         with self.store.connection() as db:
             total = db.execute('SELECT count(*) FROM agent_material WHERE ' + where, args).fetchone()[0]
+            sender_count = db.execute("SELECT count(DISTINCT coalesce(nullif(json_extract(body,'$.sender_id'),''),username||':'||coalesce(json_extract(body,'$.sender'),'unknown'))) FROM agent_material WHERE " + where, args).fetchone()[0]
             # 分组也分页，避免大量发言人再次撑满请求。
             rows = db.execute("SELECT date(time,'unixepoch',?) day, username, json_extract(body,'$.sender_id') sender_id, json_extract(body,'$.sender') sender, count(*) count FROM agent_material WHERE " + where + " GROUP BY day,username,sender_id,sender ORDER BY day,username,sender_id,sender LIMIT ? OFFSET ?", [zone,*args,limit+1,offset]).fetchall()
             days = db.execute("SELECT date(time,'unixepoch',?) day,count(*) count FROM agent_material WHERE " + where + " GROUP BY day ORDER BY day LIMIT ? OFFSET ?",[zone,*args,limit+1,offset]).fetchall()
             senders = db.execute("SELECT coalesce(nullif(json_extract(body,'$.sender_id'),''),username||':'||coalesce(json_extract(body,'$.sender'),'unknown')) sender_id,max(json_extract(body,'$.sender')) sender,count(*) count FROM agent_material WHERE " + where + " GROUP BY sender_id ORDER BY count DESC,sender_id LIMIT ? OFFSET ?",[*args,limit+1,offset]).fetchall()
-        return {'total_messages': total, 'items': [dict(r) for r in rows[:limit]], 'has_more': len(rows)>limit, 'offset':offset,
+        return {'total_messages': total, 'active_senders': sender_count, 'items': [dict(r) for r in rows[:limit]], 'has_more': len(rows)>limit, 'offset':offset,
             'daily_totals':[dict(r) for r in days[:limit]],'daily_has_more':len(days)>limit,
             'sender_ranking':[dict(r) for r in senders[:limit]],'sender_has_more':len(senders)>limit}
 

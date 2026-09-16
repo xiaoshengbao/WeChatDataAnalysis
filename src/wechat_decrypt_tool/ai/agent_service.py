@@ -222,6 +222,8 @@ class AgentService(DeepAgentRuntime, DeepProjection, AgentTimeline):
                            scope_revision=thread['scope_revision'], citations=self.citations(run))
             from .agent_references import cited_references
             message['references'] = cited_references(run['answer'], run.get('references', {}))
+            from .analysis_ui import referenced_artifacts
+            message['ui_artifacts'] = referenced_artifacts(run, run['answer'])
             thread['messages'] = [m for m in thread['messages'] if m['id'] != message['id']] + [message]
             self.store.put('agent_thread', thread)
         # 终态通过 SSE 一次补齐用量、覆盖、错误和全部引用。运行中继续使用小增量，
@@ -244,6 +246,7 @@ class AgentService(DeepAgentRuntime, DeepProjection, AgentTimeline):
             'patch': {key: snapshot.get(key) for key in final_fields if key in snapshot},
             'citations': snapshot.get('citations', []),
             'references': snapshot.get('references', []),
+            'ui_artifacts': snapshot.get('ui_artifacts', []),
         })
         return self.run(id)
 
