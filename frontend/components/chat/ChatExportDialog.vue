@@ -259,7 +259,7 @@
               </span>
               <span class="chat-export-transcription-option__copy">
                 <strong>语音转文字</strong>
-                <small>本地 Whisper</small>
+                <small>本地语音模型</small>
               </span>
             </label>
           </section>

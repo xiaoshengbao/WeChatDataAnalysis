@@ -948,7 +948,7 @@ export const useChatExport = ({ api, apiBase, contacts, selectedAccount, selecte
       if (transcribeVoice) {
         const status = await api.getVoiceTranscriptionStatus()
         if (!status?.available) {
-          throw new Error(String(status?.reason || '本地 Whisper 当前不可用，请检查模型配置。'))
+          throw new Error(String(status?.reason || '本地语音模型当前不可用，请检查模型配置。'))
         }
       }
       const response = await api.createChatExport({
